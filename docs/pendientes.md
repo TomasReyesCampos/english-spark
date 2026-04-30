@@ -203,10 +203,13 @@ existentes pero aún no se han creado:
   sistema. ✓ creado.
 - [x] `docs/cross-cutting/testing-strategy.md` — Unit + integration (no
   E2E). ✓ creado.
-- [ ] `docs/cross-cutting/i18n.md` — Estrategia de localización.
-- [ ] `docs/business/legal-compliance.md` — T&C, privacy, GDPR/LFPDPPP.
-- [ ] `docs/ops/incidents-runbook.md` — Manejo de incidentes.
-- [ ] `docs/ops/cicd.md` — Pipelines de CI/CD.
+- [x] `docs/cross-cutting/i18n.md` — Estrategia de localización.
+  ✓ creado.
+- [x] `docs/business/legal-compliance.md` — T&C, privacy, GDPR/LFPDPPP.
+  ✓ creado.
+- [x] `docs/ops/incidents-runbook.md` — Manejo de incidentes.
+  ✓ creado.
+- [x] `docs/ops/cicd.md` — Pipelines de CI/CD. ✓ creado.
 
 ---
 
