@@ -197,9 +197,12 @@ existentes pero aún no se han creado:
 - [x] `docs/architecture/01-overview.md` — Arquitectura general. ✓ creado.
 - [ ] `docs/product/learning-blocks-taxonomy.md` — Taxonomía de la
   biblioteca de bloques.
-- [ ] `docs/cross-cutting/data-and-events.md` — Modelo unificado de eventos.
-- [ ] `docs/cross-cutting/security-threat-model.md` — STRIDE por sistema.
-- [ ] `docs/cross-cutting/testing-strategy.md` — Unit + integration (no E2E).
+- [x] `docs/cross-cutting/data-and-events.md` — Modelo unificado de
+  eventos. ✓ creado.
+- [x] `docs/cross-cutting/security-threat-model.md` — STRIDE por
+  sistema. ✓ creado.
+- [x] `docs/cross-cutting/testing-strategy.md` — Unit + integration (no
+  E2E). ✓ creado.
 - [ ] `docs/cross-cutting/i18n.md` — Estrategia de localización.
 - [ ] `docs/business/legal-compliance.md` — T&C, privacy, GDPR/LFPDPPP.
 - [ ] `docs/ops/incidents-runbook.md` — Manejo de incidentes.
