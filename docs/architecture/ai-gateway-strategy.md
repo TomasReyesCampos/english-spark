@@ -1,307 +1,772 @@
 # AI Gateway Strategy
 
-> Estrategia para gestionar dependencias de modelos LLM, manejar deprecaciones,
-> capturar mejoras de costo/calidad y mantener el sistema resiliente ante
-> cambios del ecosistema de IA.
+> Capa única de acceso a LLMs y servicios de IA. Multi-proveedor con
+> fallback, A/B testing, validation con Zod, cost tracking, prompt
+> versioning. **Único path** para invocar IA desde el resto del sistema.
 
-**Estado:** Diseño v1.0
+**Estado:** Diseño v1.1 (profundizado para implementación)
 **Última actualización:** 2026-04
 **Owner:** —
+**Audiencia primaria:** agente AI implementador. Toda llamada a LLM o
+servicio de IA pasa por este Gateway. Mencionar nombres de proveedores
+fuera de este sistema es bug de diseño.
+**Alcance:** Sistema completo
 
 ---
 
-## 1. Problema que resuelve
+## 0. Cómo leer este documento
 
-Los proveedores de modelos LLM (Anthropic, OpenAI, Google, etc.) cambian con
-frecuencia significativamente mayor que cualquier otra dependencia del stack:
-
-- Deprecan modelos con aviso típico de 6-12 meses.
-- Ajustan precios varias veces al año (generalmente a la baja).
-- Lanzan modelos nuevos cada 2-3 meses, frecuentemente más baratos y mejores.
-- Cambian APIs, rate limits y políticas de uso.
-
-Sin una estrategia explícita, cada uno de estos eventos genera trabajo de
-emergencia, riesgo de outages y pérdida de oportunidades de optimización.
-Con la estrategia correcta, son eventos planificados que mejoran el sistema.
-
----
-
-## 2. Principios rectores
-
-### 2.1 Nunca acoplar código de negocio a un proveedor
-
-Regla de oro: si el código de la aplicación menciona "anthropic", "openai",
-"gemini" o cualquier nombre de proveedor fuera de la capa de abstracción,
-es un bug de diseño que debe corregirse.
-
-### 2.2 Tratar a los LLMs como commodities intercambiables
-
-Toda la arquitectura debe asumir que cualquier LLM puede reemplazarse por
-otro con esfuerzo mínimo. Esto no significa que en la práctica sean
-equivalentes, significa que la arquitectura no debe ser un obstáculo cuando
-se decide cambiar.
-
-### 2.3 Decisiones basadas en datos, no en hype
-
-Cada decisión de migración a un modelo nuevo debe estar respaldada por
-métricas medidas en datasets propios, no por benchmarks públicos ni por
-marketing del proveedor.
-
-### 2.4 Multi-proveedor desde el día uno
-
-Aunque un proveedor sirva el 95% del tráfico, mantener al menos un segundo
-proveedor activo para cada tarea crítica. El costo es despreciable, el
-beneficio en resiliencia y poder de negociación es enorme.
-
-### 2.5 Observabilidad antes que optimización
-
-No se puede optimizar lo que no se mide. Cada llamada a un LLM debe
-registrar costo, latencia, calidad y resultado de validaciones.
+- §1 establece **principios** (regla de oro).
+- §2 define **boundaries**.
+- §3 define **arquitectura del Gateway**.
+- §4 contiene el **Task Registry** completo (catálogo de tareas IA del
+  sistema).
+- §5 define **provider adapters**.
+- §6 cubre **prompt versioning**.
+- §7 cubre **golden datasets** y evaluación.
+- §8 cubre **migración progresiva** entre modelos.
+- §9 cubre **manejo de deprecaciones**.
+- §10 cubre **cost tracking y observability**.
+- §11 contiene **API contracts** (`executeTask`).
+- §12 enumera **edge cases**.
+- §13 contiene el **plan de implementación**.
+- §14 lista **métricas** y alertas.
 
 ---
 
-## 3. Arquitectura: el AI Gateway
+## 1. Principios rectores
+
+### 1.1 Regla de oro
+
+> **Si el código de la aplicación menciona "anthropic", "openai",
+> "gemini", "azure" o cualquier nombre de proveedor fuera de la capa
+> de abstracción, es un bug de diseño que debe corregirse.**
+
+Toda invocación de IA usa `executeTask(taskId, input)`. El Gateway
+internamente decide qué proveedor + modelo + prompt usar.
+
+### 1.2 LLMs son commodities intercambiables
+
+La arquitectura asume que cualquier LLM puede reemplazarse por otro
+con esfuerzo mínimo. En la práctica no son equivalentes; pero la
+arquitectura no es el obstáculo cuando se decide cambiar.
+
+### 1.3 Decisiones basadas en datos, no hype
+
+Cada migración a modelo nuevo está respaldada por métricas medidas
+en datasets propios (golden datasets §7), no por benchmarks públicos
+ni marketing del proveedor.
+
+### 1.4 Multi-proveedor desde día uno
+
+Aunque un proveedor sirva 95% del tráfico, mantener al menos un
+secundario activo (5%) para cada tarea crítica. Costo despreciable;
+beneficio en resiliencia y poder de negociación enorme.
+
+### 1.5 Observabilidad antes que optimización
+
+No se optimiza lo que no se mide. Cada llamada al Gateway registra
+costo, latencia, calidad, validation result.
+
+### 1.6 Cobro de Sparks antes de invocar
+
+Operaciones que cuestan Sparks: el Gateway llama
+`sparks.chargeOperation` antes de invocar el modelo. Si falla el
+charge, no invoca. Si la invocación falla, llama `sparks.refundOperation`.
+
+---
+
+## 2. Boundaries
+
+### 2.1 Es responsable de
+
+- Routing de cada `taskId` a proveedor + modelo + prompt según
+  Task Registry.
+- Cargar el prompt versionado correcto.
+- Ejecutar con retry y fallback.
+- Validar output con Zod schema definido en el task.
+- Cobrar Sparks (delegando a `sparks-system`).
+- Registrar métricas (costo, latencia, validation result).
+- A/B testing entre modelos via experimentos.
+- Circuit breaking si proveedor falla mucho.
+- Detección automática de deprecaciones de modelo.
+
+### 2.2 NO es responsable de
+
+- **Lógica de negocio:** no sabe qué es un "roadmap" o un "Spark".
+- **Generar prompts dinámicamente:** los carga de archivos versionados
+  (templates con placeholders).
+- **Mantener estado de usuario:** stateless excepto métricas
+  agregadas.
+- **Decidir cuándo migrar de modelo:** humano decide (con base en
+  reportes mensuales §7); Gateway ejecuta el rollout.
+- **Rate limiting global del usuario:** eso es responsabilidad de
+  Sparks (cap por plan) + Anti-fraud (caps por seguridad).
+
+### 2.3 Tensiones con otros sistemas
+
+| Tensión | Resolución |
+|---------|-----------|
+| Modelo nuevo cuesta más → ajustar Sparks por operation | Admin actualiza `sparks_operation_costs`. Gateway no decide costos. |
+| Validación de output falla → ¿qué devolver al llamador? | Gateway maneja retry interno; al exponer error al llamador, error es claro y task-specific. |
+| LLM es lento → ¿bloquear al usuario? | Tasks `realtime` tienen `timeout_ms`. Si excede, error explícito (no esperar). |
+| Necesito invocar LLM para "algo nuevo" | NO invocar directo. Registrar nuevo task en Registry primero. |
+
+---
+
+## 3. Arquitectura
 
 ### 3.1 Diagrama lógico
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                  CÓDIGO DE NEGOCIO                         │
-│  (no conoce proveedores ni modelos específicos)            │
-└────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                  CÓDIGO DE NEGOCIO                       │
+│      (no conoce proveedores ni modelos)                  │
+└──────────────────────────────────────────────────────────┘
                           ↓
-                  executeTask({
-                    taskId: "generate_initial_roadmap",
-                    inputs: {...}
-                  })
+        executeTask({ task_id, input, user_id })
                           ↓
-┌────────────────────────────────────────────────────────────┐
-│                    AI GATEWAY                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  1. Resuelve configuración actual de la tarea       │  │
-│  │  2. Selecciona modelo (con A/B test si aplica)      │  │
-│  │  3. Carga prompt versionado para ese modelo         │  │
-│  │  4. Ejecuta con retry y fallback                    │  │
-│  │  5. Valida output con schema                        │  │
-│  │  6. Registra métricas (costo, latencia, calidad)    │  │
-│  └──────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    AI GATEWAY                            │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  1. Resolver Task Registry → config actual         │ │
+│  │  2. Validar input con Zod schema                   │ │
+│  │  3. Cobrar Sparks (delegando a sparks-system)      │ │
+│  │  4. Decidir variante (control / experimental %)    │ │
+│  │  5. Cargar prompt versionado para modelo elegido   │ │
+│  │  6. Ejecutar con retry exponencial                 │ │
+│  │  7. Si primary falla: cae a fallback chain         │ │
+│  │  8. Validar output con Zod schema                  │ │
+│  │  9. Si validation falla: retry con feedback (1x)   │ │
+│  │ 10. Si refund: invocar sparks.refundOperation      │ │
+│  │ 11. Registrar métricas y emitir evento             │ │
+│  └────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────┘
                           ↓
-              ┌───────────┼───────────┐
-              ↓           ↓           ↓
-       ┌──────────┐ ┌──────────┐ ┌──────────┐
-       │ Adapter  │ │ Adapter  │ │ Adapter  │
-       │Anthropic │ │  Google  │ │  OpenAI  │
-       └──────────┘ └──────────┘ └──────────┘
-              ↓           ↓           ↓
-        [APIs externas reales]
+                ┌─────────┼─────────┐
+                ↓         ↓         ↓
+         ┌──────────┐ ┌──────────┐ ┌──────────┐
+         │ Adapter  │ │ Adapter  │ │ Adapter  │
+         │Anthropic │ │  Google  │ │  OpenAI  │
+         └──────────┘ └──────────┘ └──────────┘
+                ↓         ↓         ↓
+            [APIs externas]
 ```
 
-### 3.2 Responsabilidades del Gateway
+### 3.2 Componentes
 
-- **Routing**: decide qué proveedor y modelo usar para cada llamada.
-- **Prompt versioning**: carga el prompt correcto para el modelo seleccionado.
-- **Validation**: valida outputs contra schemas Zod antes de devolver.
-- **Retry policy**: reintenta llamadas fallidas con backoff exponencial.
-- **Fallback**: si el primario falla, prueba el secundario automáticamente.
-- **Cost tracking**: registra costo de cada llamada por tarea y usuario.
-- **A/B testing**: permite enviar % de tráfico a modelos experimentales.
-- **Circuit breaking**: si un proveedor falla mucho, rutea temporalmente a otro.
+| Componente | Para qué |
+|-----------|----------|
+| **Task Registry** | Catálogo central de tareas IA con primary + fallback + experimental |
+| **Provider Adapters** | Wrappers de SDK por proveedor (Anthropic, Google, OpenAI, Azure, self-hosted) |
+| **Prompt Loader** | Carga `prompts/<task>/<version>_<provider>.txt` según selección |
+| **Validator** | Aplica Zod schema al output del LLM |
+| **Retry Engine** | Backoff exponencial, fallback chain |
+| **Cost Tracker** | Persiste costo por task, modelo, usuario |
+| **Experiment Manager** | Routea % del tráfico a variante experimental |
+| **Circuit Breaker** | Si proveedor X falla > N veces en M min, ruteo temporalmente a fallback |
 
-### 3.3 Lo que el Gateway NO hace
+### 3.3 Stack recomendado para empezar
 
-- No tiene lógica de negocio (no sabe qué es un "roadmap" o un "Spark").
-- No mantiene estado de usuario (es stateless excepto por métricas).
-- No genera prompts dinámicamente (los carga de archivos versionados).
+(De ADR-001-ai-gateway.)
+
+| Componente | Tool | Por qué |
+|-----------|------|---------|
+| Adapter multi-proveedor | LiteLLM (open source) | Interfaz unificada, gratis |
+| Observability + logs | Langfuse | Logging y dashboards específicos LLMs, tier gratuito |
+| Validation | Zod (TypeScript) | Type-safe, integración natural |
+| Golden datasets | Promptfoo | Framework de evaluación, tier gratuito |
+| A/B testing | Implementación propia sobre LiteLLM | Lógica simple en el Gateway |
 
 ---
 
 ## 4. Task Registry
 
-### 4.1 Concepto
-
-Toda invocación de IA en el sistema corresponde a una "tarea" registrada
-explícitamente. El registry es el inventario completo de la dependencia
-de IA del sistema.
-
-### 4.2 Schema del registry
+### 4.1 Schema del Task
 
 ```typescript
 interface TaskDefinition {
-  id: string;
+  // Identidad
+  id: string;                        // ej: 'score_pronunciation'
   description: string;
   category: 'realtime' | 'batch' | 'background';
 
-  // Schemas de input/output
-  inputSchema: ZodSchema;
-  outputSchema: ZodSchema;
+  // Schemas
+  input_schema: ZodSchema;           // valida input antes de invocar
+  output_schema: ZodSchema;          // valida output del LLM
 
-  // Configuración de proveedor
+  // Configuración primary (variant 'control')
   primary: ModelConfig;
-  fallbackChain: ModelConfig[];
+  fallback_chain: ModelConfig[];     // intentar en orden si primary falla
 
-  // Experimentación
+  // Experimentación opcional
   experimental?: {
     config: ModelConfig;
-    trafficPercentage: number;
+    traffic_pct: number;             // 0-100
     mode: 'shadow' | 'canary';
-    startedAt: Date;
+    started_at: string;
+    rollback_criteria: RollbackCriteria;
   };
 
-  // Restricciones
-  maxCostUsd: number;
-  timeoutMs: number;
-  retryPolicy: { maxAttempts: number; backoffMs: number };
+  // Constraints
+  max_cost_usd: number;              // por invocación; alerta si excede
+  timeout_ms: number;                // total incluyendo retries
+  retry_policy: { max_attempts: number; backoff_ms: number };
+  quality_threshold: number;         // % de validations que deben pasar
 
-  // Calidad esperada
-  qualityThreshold: number; // % de validaciones que deben pasar
+  // Sparks
+  sparks_operation_id?: string;      // ej: 'conversation_minute'; null si free
+
+  // Metadata
+  introduced_at: string;
+  owner: string;
 }
 
 interface ModelConfig {
-  provider: 'anthropic' | 'google' | 'openai' | 'self-hosted';
-  model: string;
-  promptVersion: string; // referencia a archivo en prompts/
+  provider: 'anthropic' | 'google' | 'openai' | 'azure' | 'self_hosted';
+  model: string;                     // ej: 'claude-haiku-4-5'
+  prompt_version: string;            // ref a prompts/<task>/<v>_<provider>.txt
   temperature?: number;
-  maxTokens?: number;
+  max_tokens?: number;
+  use_batch_api?: boolean;           // para Anthropic Batch API
+  use_provisioned_throughput?: boolean;
+}
+
+interface RollbackCriteria {
+  max_validation_rate_drop: number;
+  max_latency_p95_increase_ratio: number;
+  max_error_rate_increase: number;
+  max_cost_increase_ratio: number;
 }
 ```
 
-### 4.3 Ejemplo de registry
+### 4.2 Catálogo completo de tasks del MVP
+
+#### 4.2.1 Tasks de transcripción
 
 ```typescript
-export const taskRegistry: Record<string, TaskDefinition> = {
-  generate_initial_roadmap: {
-    id: 'generate_initial_roadmap',
-    description: 'Genera el roadmap inicial del usuario en onboarding',
-    category: 'realtime',
-    inputSchema: RoadmapInputSchema,
-    outputSchema: RoadmapOutputSchema,
-    primary: {
-      provider: 'anthropic',
-      model: 'claude-haiku-4-5',
-      promptVersion: 'v2_claude',
-      temperature: 0.3,
-      maxTokens: 4000
-    },
-    fallbackChain: [
-      { provider: 'google', model: 'gemini-2.0-flash', promptVersion: 'v1_gemini' },
-      { provider: 'openai', model: 'gpt-4o-mini', promptVersion: 'v1_gpt4o_mini' }
-    ],
-    maxCostUsd: 0.05,
-    timeoutMs: 15000,
-    retryPolicy: { maxAttempts: 2, backoffMs: 1000 },
-    qualityThreshold: 0.95
+'transcribe_user_audio': {
+  description: 'STT del audio del usuario para análisis posterior',
+  category: 'realtime',
+  input_schema: z.object({
+    audio_storage_key: z.string(),  // ref a R2
+    expected_language: z.literal('en'),
+  }),
+  output_schema: z.object({
+    text: z.string(),
+    confidence: z.number().min(0).max(1),
+    word_timings: z.array(z.object({
+      word: z.string(), start_ms: z.number(), end_ms: z.number(),
+    })),
+  }),
+  primary: {
+    provider: 'azure',
+    model: 'whisper-large-v3',
+    prompt_version: 'n/a',
   },
-
-  nightly_roadmap_update: {
-    id: 'nightly_roadmap_update',
-    description: 'Actualiza el roadmap del usuario en el job nocturno',
-    category: 'batch',
-    // ... usa Anthropic Batch API para 50% descuento
-    primary: {
-      provider: 'anthropic',
-      model: 'claude-haiku-4-5-batch',
-      promptVersion: 'v1_claude',
-    },
-    // ...
-  },
-
-  generate_morning_message: {
-    id: 'generate_morning_message',
-    description: 'Genera el mensaje matutino humanizado del usuario',
-    category: 'background',
-    // ... más simple, modelos más baratos
-  },
-
-  evaluate_pronunciation: {
-    id: 'evaluate_pronunciation',
-    description: 'Evalúa pronunciación de un audio del usuario',
-    category: 'realtime',
-    // ... primario es modelo propio cuando exista, fallback Azure
-    primary: {
-      provider: 'self-hosted',
-      model: 'pronunciation-v3',
-      promptVersion: 'n/a'
-    },
-    fallbackChain: [
-      { provider: 'azure', model: 'pronunciation-assessment', promptVersion: 'n/a' }
-    ],
-    // ...
-  }
-};
+  fallback_chain: [
+    { provider: 'self_hosted', model: 'whisper-large-v3', prompt_version: 'n/a' },
+  ],
+  max_cost_usd: 0.05,
+  timeout_ms: 15000,
+  retry_policy: { max_attempts: 2, backoff_ms: 1000 },
+  quality_threshold: 0.95,
+  sparks_operation_id: null,        // incluido en charge previo de la operation
+},
 ```
 
-### 4.4 Beneficios del registry
+#### 4.2.2 Tasks de pronunciation
 
-- **Inventario completo** de dependencia de IA visible en un solo archivo.
-- **Cambios centralizados**: cambiar de modelo es modificar una línea.
-- **Auditabilidad**: histórico de qué modelo se usó para qué tarea cuando.
-- **Documentación viva**: el código mismo documenta el sistema.
+```typescript
+'score_pronunciation': {
+  description: 'Evaluar pronunciación de un audio',
+  category: 'realtime',
+  input_schema: z.object({
+    audio_storage_key: z.string(),
+    expected_text: z.string(),
+    target_variant: z.enum(['en-US', 'en-GB']),
+  }),
+  output_schema: z.object({
+    overall_score: z.number().min(0).max(100),
+    word_scores: z.array(z.object({
+      word: z.string(), score: z.number().min(0).max(100),
+    })),
+    phoneme_errors: z.array(z.object({
+      phoneme: z.string(), expected: z.string(), produced: z.string(),
+    })),
+  }),
+  primary: {
+    provider: 'azure',
+    model: 'pronunciation-assessment',
+    prompt_version: 'n/a',
+  },
+  fallback_chain: [
+    { provider: 'self_hosted', model: 'pronunciation-v3', prompt_version: 'n/a' },
+  ],
+  max_cost_usd: 0.04,
+  timeout_ms: 10000,
+  retry_policy: { max_attempts: 2, backoff_ms: 1000 },
+  quality_threshold: 0.98,
+},
+```
+
+#### 4.2.3 Tasks de grammar
+
+```typescript
+'detect_grammar_errors': {
+  description: 'Detectar errores gramaticales en transcripción de speech',
+  category: 'realtime',
+  input_schema: z.object({
+    transcription: z.string(),
+    target_cefr: z.enum(['A2','B1','B1+','B2','B2+','C1']),
+    exercise_context: z.enum([
+      'free_response','roleplay_free','roleplay_structured',
+      'image_description','translation','fill_blank',
+      'sentence_ordering','read_aloud',
+    ]),
+  }),
+  output_schema: z.object({
+    errors: z.array(z.object({
+      type: z.string(),
+      severity: z.enum(['minor','moderate','major']),
+      position: z.number(),
+      excerpt: z.string(),
+      suggestion: z.string(),
+      affected_subskill: z.string(),
+    })),
+  }),
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v1_claude',
+    temperature: 0.1,
+    max_tokens: 1500,
+  },
+  fallback_chain: [
+    { provider: 'google', model: 'gemini-2.0-flash', prompt_version: 'v1_gemini', temperature: 0.1 },
+    { provider: 'openai', model: 'gpt-4o-mini', prompt_version: 'v1_gpt4o_mini', temperature: 0.1 },
+  ],
+  max_cost_usd: 0.01,
+  timeout_ms: 8000,
+  retry_policy: { max_attempts: 2, backoff_ms: 1000 },
+  quality_threshold: 0.95,
+},
+```
+
+#### 4.2.4 Tasks de roadmap
+
+```typescript
+'generate_initial_roadmap': {
+  description: 'Generar roadmap inicial al completar onboarding',
+  category: 'realtime',
+  input_schema: RoadmapInputSchema,    // ver ai-roadmap-system.md
+  output_schema: RoadmapOutputSchema,
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v2_claude',
+    temperature: 0.3,
+    max_tokens: 4000,
+  },
+  fallback_chain: [
+    { provider: 'google', model: 'gemini-2.0-flash', prompt_version: 'v1_gemini' },
+    { provider: 'openai', model: 'gpt-4o-mini', prompt_version: 'v1_gpt4o_mini' },
+  ],
+  max_cost_usd: 0.05,
+  timeout_ms: 15000,
+  retry_policy: { max_attempts: 2, backoff_ms: 1000 },
+  quality_threshold: 0.95,
+  sparks_operation_id: null,        // free, parte del onboarding
+},
+
+'nightly_roadmap_update': {
+  description: 'Actualizar roadmap del usuario en job nocturno',
+  category: 'batch',
+  input_schema: RoadmapUpdateInputSchema,
+  output_schema: RoadmapUpdateOutputSchema,
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v1_claude',
+    use_batch_api: true,            // 50% off
+    temperature: 0.3,
+    max_tokens: 2000,
+  },
+  fallback_chain: [
+    { provider: 'google', model: 'gemini-2.0-flash', prompt_version: 'v1_gemini' },
+  ],
+  max_cost_usd: 0.02,
+  timeout_ms: 60000,                  // batch puede ser lento
+  retry_policy: { max_attempts: 3, backoff_ms: 5000 },
+  quality_threshold: 0.95,
+  sparks_operation_id: null,        // incluido en plan
+},
+```
+
+#### 4.2.5 Tasks de mensajes humanizados
+
+```typescript
+'generate_morning_message': {
+  description: 'Generar mensaje matutino personalizado',
+  category: 'background',
+  input_schema: MorningMessageInputSchema,
+  output_schema: z.object({
+    title: z.string().max(50),
+    body: z.string().max(120),
+  }),
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v1_claude',
+    use_batch_api: true,
+    temperature: 0.7,
+    max_tokens: 200,
+  },
+  fallback_chain: [
+    { provider: 'google', model: 'gemini-2.0-flash', prompt_version: 'v1_gemini' },
+  ],
+  max_cost_usd: 0.001,
+  timeout_ms: 30000,
+  retry_policy: { max_attempts: 2, backoff_ms: 2000 },
+  quality_threshold: 0.95,
+  sparks_operation_id: null,
+},
+
+'generate_weekly_summary': {
+  description: 'Generar resumen semanal del progreso',
+  category: 'background',
+  input_schema: WeeklySummaryInputSchema,
+  output_schema: WeeklySummaryOutputSchema,
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v1_claude',
+    use_batch_api: true,
+  },
+  // ...
+  sparks_operation_id: 'weekly_summary_generation',  // 3 Sparks
+},
+```
+
+#### 4.2.6 Tasks de roleplay y conversación
+
+```typescript
+'conversation_turn': {
+  description: 'Un turno de conversación 1:1 con la IA',
+  category: 'realtime',
+  input_schema: z.object({
+    conversation_history: z.array(z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string(),
+    })),
+    user_profile: UserProfileSnapshotSchema,
+    block_context: z.string().optional(),
+  }),
+  output_schema: z.object({
+    response: z.string(),
+    target_subskills_practiced: z.array(z.string()),
+  }),
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-sonnet-4-6',     // mejor calidad para conversación
+    prompt_version: 'v1_claude',
+    temperature: 0.7,
+    max_tokens: 500,
+  },
+  fallback_chain: [
+    { provider: 'google', model: 'gemini-2.0-flash', prompt_version: 'v1_gemini' },
+  ],
+  max_cost_usd: 0.05,
+  timeout_ms: 8000,
+  retry_policy: { max_attempts: 2, backoff_ms: 500 },
+  quality_threshold: 0.97,
+  sparks_operation_id: 'conversation_minute',  // 1 Spark/min
+},
+
+'generate_personalized_roleplay': {
+  description: 'Generar roleplay custom cuando biblioteca no tiene match',
+  category: 'realtime',
+  // ...
+  sparks_operation_id: 'generate_personalized_roleplay',  // 5 Sparks
+},
+```
+
+#### 4.2.7 Tasks de notifications
+
+```typescript
+'generate_notification_content': {
+  description: 'Generar contenido personalizado de daily reminder + streak alert',
+  category: 'background',
+  // ...
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v1_claude',
+    use_batch_api: true,
+    temperature: 0.6,
+    max_tokens: 300,
+  },
+  // ...
+},
+```
+
+#### 4.2.8 Tasks de Customer Support
+
+```typescript
+'ai_assistant_response': {
+  description: 'Generar respuesta del AI Assistant a consulta de soporte',
+  category: 'realtime',
+  input_schema: z.object({
+    user_message: z.string(),
+    conversation_history: z.array(/* ... */),
+    user_context: z.object({/* ... */}),
+    relevant_articles: z.array(z.string()),
+  }),
+  output_schema: z.object({
+    response: z.string(),
+    escalation_needed: z.boolean(),
+    escalation_reason: z.string().optional(),
+    create_ticket: z.boolean(),
+    ticket_priority: z.enum(['low','normal','high','critical']).optional(),
+  }),
+  primary: {
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v1_claude',
+    temperature: 0.4,
+    max_tokens: 500,
+  },
+  fallback_chain: [
+    { provider: 'google', model: 'gemini-2.0-flash', prompt_version: 'v1_gemini' },
+  ],
+  max_cost_usd: 0.005,
+  timeout_ms: 5000,
+  retry_policy: { max_attempts: 1, backoff_ms: 1000 },
+  quality_threshold: 0.99,
+  sparks_operation_id: null,        // incluido en plan
+},
+```
+
+### 4.3 Persistencia del Registry
+
+Archivo TypeScript versionado en repo:
+
+```
+apps/workers/ai-gateway/
+├── src/
+│   ├── tasks/
+│   │   ├── transcribe_user_audio.ts
+│   │   ├── score_pronunciation.ts
+│   │   ├── detect_grammar_errors.ts
+│   │   └── ...
+│   ├── registry.ts                ← exports merge de todos
+│   ├── adapters/
+│   ├── prompts/                   ← (a copiar de docs)
+│   └── ...
+└── prompts/
+    ├── transcribe_user_audio/
+    ├── score_pronunciation/
+    └── ...
+```
+
+Cambios al Registry pasan por PR review. Después de merge, deploy
+gradual con feature flags si el cambio es riesgoso.
 
 ---
 
-## 5. Versionado de prompts
+## 5. Provider Adapters
 
-### 5.1 Estructura de archivos
+### 5.1 Interfaz unificada
+
+Cada adapter implementa:
+
+```typescript
+interface ProviderAdapter {
+  provider_id: 'anthropic' | 'google' | 'openai' | 'azure' | 'self_hosted';
+
+  invoke(request: ProviderRequest): Promise<ProviderResponse>;
+
+  estimateCost(request: ProviderRequest, response?: ProviderResponse): number;
+
+  isHealthy(): Promise<boolean>;
+
+  getCapabilities(): {
+    supports_batch_api: boolean;
+    supports_streaming: boolean;
+    supports_provisioned_throughput: boolean;
+  };
+}
+
+interface ProviderRequest {
+  model: string;
+  prompt: string;
+  temperature?: number;
+  max_tokens?: number;
+  metadata: { task_id: string; user_id_hash?: string };
+}
+
+interface ProviderResponse {
+  output: string;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+  };
+  latency_ms: number;
+  raw_response?: unknown;             // para debugging, no persistir
+}
+```
+
+### 5.2 Adapters concretos
+
+| Adapter | Implementación |
+|---------|---------------|
+| Anthropic | LiteLLM con `claude-*` models |
+| Google | LiteLLM con `gemini-*` models |
+| OpenAI | LiteLLM con `gpt-*` models |
+| Azure (Pronunciation) | SDK directo, no via LiteLLM (es speech, no LLM) |
+| Azure (Whisper) | LiteLLM con `azure/whisper-large-v3` |
+| Self-hosted | HTTPS endpoint propio (Modal, GPU pod, etc.) |
+
+### 5.3 Modelos propios
+
+Tratamiento idéntico a APIs externas. Endpoint propio expuesto vía
+HTTPS:
+
+```typescript
+{
+  provider: 'self_hosted',
+  model: 'pronunciation-v3',
+  prompt_version: 'n/a',
+  endpoint: 'https://ml.internal.example.com/pronunciation/v3',
+}
+```
+
+Beneficios del tratamiento uniforme:
+- Si modelo propio falla, fallback automático a API externa.
+- Si API externa falla, modelo propio toma el tráfico.
+- Migración gradual sigue mismo protocolo.
+- A/B testing trivial.
+
+---
+
+## 6. Prompt versioning
+
+### 6.1 Estructura de archivos
 
 ```
-prompts/
+apps/workers/ai-gateway/prompts/
+├── score_pronunciation/
+│   └── (n/a — Azure Pronunciation no usa prompt)
+├── detect_grammar_errors/
+│   ├── v1_claude.txt
+│   ├── v1_gemini.txt
+│   ├── v1_gpt4o_mini.txt
+│   └── README.md
 ├── generate_initial_roadmap/
-│   ├── v1_claude.txt         (deprecado, mantenido para auditoría)
-│   ├── v2_claude.txt         (actual para Claude)
-│   ├── v1_gemini.txt         (actual para Gemini, formato distinto)
-│   ├── v1_gpt4o_mini.txt     (actual para GPT-4o-mini)
-│   └── README.md             (notas sobre la evolución de prompts)
-├── nightly_roadmap_update/
-│   └── ...
+│   ├── v1_claude.txt              (deprecado)
+│   ├── v2_claude.txt              (actual)
+│   ├── v1_gemini.txt              (actual Gemini)
+│   ├── v1_gpt4o_mini.txt
+│   └── README.md
 └── ...
 ```
 
-### 5.2 Por qué versionar prompts por modelo
+### 6.2 Convenciones
 
-Diferentes modelos tienen comportamientos sutilmente diferentes:
+- Filename: `v<version>_<provider>.txt`.
+- Versiones son monotónicas crecientes por task+provider.
+- Old versions **se mantienen** (deprecadas) para auditoría y
+  rollback rápido.
+- README.md por task explica evolución y razones de cambio.
+
+### 6.3 Por qué versionar prompt por modelo
+
+Modelos tienen comportamientos sutilmente distintos:
 
 - Claude tiende a respetar mejor estructura de XML tags.
 - Gemini funciona mejor con instrucciones en formato numerado claro.
-- GPT-4o-mini necesita reforzar más las reglas de formato JSON.
+- GPT-4o-mini necesita reforzar reglas de formato JSON.
 
-Optimizar el prompt para cada modelo extrae el mejor rendimiento posible
-de cada uno y permite comparaciones más justas.
+Optimizar el prompt para cada modelo extrae el mejor rendimiento
+posible.
 
-### 5.3 Workflow de evolución de prompts
+### 6.4 Templates con placeholders
 
-1. Identificar problema (ejemplo: 3% de outputs fallan validación).
-2. Crear nueva versión del prompt en archivo versionado nuevo.
-3. Correr golden dataset contra ambas versiones.
-4. Si la nueva versión mejora, actualizar referencia en task registry.
-5. Mantener la versión antigua para auditoría y rollback rápido.
+```text
+# detect_grammar_errors/v1_claude.txt
+
+Eres un experto en gramática inglesa evaluando producción oral de
+hispanohablantes latinoamericanos.
+
+CONTEXTO:
+- Nivel CEFR target: {{target_cefr}}
+- Tipo de ejercicio: {{exercise_context}}
+
+TRANSCRIPCIÓN A EVALUAR:
+{{transcription}}
+
+INSTRUCCIONES:
+1. Identificá errores gramaticales reales (no estilísticos).
+2. Para cada error, clasificá severidad:
+   - minor: no afecta comprensión
+   - moderate: notable pero comprensible
+   - major: causa confusión
+3. Para errores en {{exercise_context}}, sé tolerante con disfluencias
+   normales del speech espontáneo.
+4. Para B1, no marqués estructuras C1 como "esperadas".
+
+DEVOLVÉ JSON SIGUIENDO EL SCHEMA:
+{
+  "errors": [
+    {
+      "type": "...",
+      "severity": "minor|moderate|major",
+      "position": ...,
+      "excerpt": "...",
+      "suggestion": "...",
+      "affected_subskill": "..."
+    }
+  ]
+}
+
+Devolvé SOLO el JSON, sin markdown ni texto adicional.
+```
+
+### 6.5 Workflow de evolución
+
+1. Identificar problema: ej. validation rate cae a 92%, debería ser
+   ≥ 95%.
+2. Crear `v3_claude.txt` con cambios.
+3. Correr golden dataset (§7) contra ambas versiones.
+4. Si v3 mejora: actualizar Task Registry para apuntar a v3.
+5. Mantener v2 con `deprecated_at` para audit y rollback.
 
 ---
 
-## 6. Golden Datasets
+## 7. Golden datasets y evaluación
 
-### 6.1 Concepto
+### 7.1 Concepto
 
-Para cada tarea, mantener un dataset fijo de casos de prueba que sirve como
-verdad de referencia para evaluar cualquier modelo o prompt.
+Para cada task, dataset fijo de casos de prueba que sirve como verdad
+de referencia para evaluar cualquier modelo o prompt.
 
-### 6.2 Estructura
+### 7.2 Estructura
 
 ```
-golden_datasets/
-├── generate_initial_roadmap/
-│   ├── case_001_b1_tech_no_deadline.json
-│   ├── case_002_b2_sales_urgent.json
-│   ├── case_003_b1_high_anxiety.json
-│   ├── case_004_c1_academic.json
+apps/workers/ai-gateway/golden_datasets/
+├── detect_grammar_errors/
+│   ├── case_001_b1_minor_errors.json
+│   ├── case_002_b2_no_errors.json
+│   ├── case_003_b1_major_misuse_perfect.json
 │   ├── ...
-│   └── case_100_edge_case_minimal_input.json
-├── nightly_roadmap_update/
+│   └── case_100_edge_case_empty_input.json
+├── generate_initial_roadmap/
 │   └── ...
 └── ...
 ```
 
-### 6.3 Composición de un caso
+### 7.3 Composición de un caso
 
 ```json
 {
@@ -329,27 +794,27 @@ golden_datasets/
     "all_block_ids_must_exist": true,
     "must_respect_prerequisites": true
   },
-  "expected_output_sample": "..." // opcional, para inspección manual
+  "expected_output_sample": "..."
 }
 ```
 
-### 6.4 Cómo se construyen
+### 7.4 Cómo se construyen
 
-- Casos típicos: derivados de usuarios reales (anonimizados) o generados
-  manualmente cubriendo perfiles representativos.
-- Edge cases: deadlines extremos, perfiles contradictorios, inputs mínimos,
-  inputs ruidosos, valores fuera de rango pero válidos.
-- Casos de regresión: cualquier caso que históricamente falló en producción
-  se agrega al dataset para garantizar que no vuelva a fallar.
+- **Casos típicos:** derivados de usuarios reales (anonimizados) o
+  generados manualmente cubriendo perfiles representativos.
+- **Edge cases:** deadlines extremos, inputs mínimos, valores fuera
+  de rango pero válidos.
+- **Casos de regresión:** cualquier caso que falló en producción se
+  agrega aquí para garantizar que no vuelva.
 
-Tamaño objetivo: 30-100 casos por tarea. Más es mejor pero hay rendimientos
-decrecientes.
+Tamaño objetivo: 30–100 casos por task. Más es mejor pero hay
+rendimientos decrecientes.
 
-### 6.5 Uso del dataset
+### 7.5 Uso del dataset
 
 ```bash
-# Evaluar un modelo nuevo contra una tarea
-npm run eval -- --task generate_initial_roadmap --model gemini-2.5-flash
+# Evaluar modelo nuevo contra una task
+pnpm eval --task detect_grammar_errors --model gemini-2.5-flash
 
 # Output:
 # ✓ 95/100 cases passed validation
@@ -361,162 +826,34 @@ npm run eval -- --task generate_initial_roadmap --model gemini-2.5-flash
 #   Validation pass rate: -1%
 ```
 
-Esto convierte la decisión de migrar de subjetiva a basada en datos.
+Convierte decisión subjetiva en data-driven.
 
----
+### 7.6 Job mensual de evaluación
 
-## 7. Estrategia de migración (rollout progresivo)
-
-### 7.1 Fases del rollout
-
-**Fase 0: Evaluación offline (días 1-3)**
-- Correr golden dataset contra el modelo candidato.
-- Si pasa la threshold de calidad, continuar.
-- Ajustar prompt si es necesario para optimizar para el nuevo modelo.
-
-**Fase 1: Shadow mode (días 4-10)**
-- 100% del tráfico va al modelo actual y se le devuelve al usuario.
-- Mismo input se envía en paralelo al modelo candidato.
-- Outputs se loggean pero no se le muestran al usuario.
-- Comparación automática de outputs (similitud, costo, latencia).
-
-**Fase 2: Canary 5% (días 11-15)**
-- 5% del tráfico real va al modelo candidato.
-- Métricas: costo, latencia, validation rate, error rate.
-- Idealmente, métrica de producto (tasa de completion del onboarding,
-  tiempo en la app) para detectar degradación cualitativa.
-
-**Fase 3: Ramp up (días 16-25)**
-- Si las métricas se mantienen, subir a 25%.
-- Esperar 2-3 días, evaluar.
-- Subir a 50%, esperar, evaluar.
-- Subir a 100% si todo está bien.
-
-**Fase 4: Modelo viejo como fallback (días 26+)**
-- Modelo viejo queda en la cadena de fallback.
-- Después de 30 días estables, removerlo del registry.
-
-### 7.2 Criterios de rollback automático
-
-El sistema debe rollbackear automáticamente si:
-
-- Tasa de validación cae más de 3% respecto a baseline.
-- Latencia p95 sube más de 50% respecto a baseline.
-- Tasa de errores HTTP del proveedor sube más de 2%.
-- Costo por llamada sube inesperadamente más de 20%.
-
-### 7.3 Implementación en el registry
+Primer lunes del mes, automático:
 
 ```typescript
-generate_initial_roadmap: {
-  primary: {
-    provider: 'anthropic',
-    model: 'claude-haiku-4-5',
-    promptVersion: 'v2_claude'
-  },
-  experimental: {
-    config: {
-      provider: 'anthropic',
-      model: 'claude-haiku-5',  // versión nueva
-      promptVersion: 'v3_claude'
-    },
-    trafficPercentage: 5,
-    mode: 'canary',
-    startedAt: '2026-04-25',
-    rollbackCriteria: {
-      maxValidationRateDrop: 0.03,
-      maxLatencyP95IncreaseRatio: 1.5,
-      maxErrorRateIncrease: 0.02
+async function monthlyEvaluation() {
+  for (const task of taskRegistry) {
+    for (const model of availableModels) {
+      const results = await runGoldenDataset(task, model);
+      report.add({ task, model, results });
     }
   }
+  generateReport(report);
+  notifyTeam(report);
 }
 ```
 
----
-
-## 8. Manejo de deprecaciones
-
-### 8.1 Detección automática
-
-Job de CI semanal que verifica el estado de cada modelo en uso:
-
-```bash
-# Pseudocódigo
-for task in taskRegistry:
-    for modelConfig in [task.primary, ...task.fallbackChain]:
-        status = checkModelDeprecation(modelConfig)
-        if status.deprecated:
-            createGitHubIssue({
-                title: f"Deprecation: {modelConfig.model}",
-                body: f"Sunset date: {status.sunsetDate}, recommended replacement: {status.replacement}",
-                labels: ['ai-deprecation', 'priority-medium']
-            })
-```
-
-### 8.2 Proceso de respuesta
-
-| Tiempo desde anuncio | Acción |
-|---------------------:|--------|
-| Día 0 | Issue automático creado, equipo notificado |
-| Días 1-3 | Identificar modelo de reemplazo |
-| Días 4-10 | Correr golden dataset contra reemplazo, ajustar prompts |
-| Días 11-30 | Rollout progresivo según protocolo |
-| Día 30 | Modelo nuevo sirve 100% del tráfico |
-| Días 30-90 | Modelo viejo en fallback, monitoreo |
-| Día 90+ | Modelo viejo retirado del registry |
-
-Generalmente los proveedores dan 6-12 meses de notice. El proceso debería
-tomar menos de 30 días, dejando amplio margen.
-
-### 8.3 Plan de contingencia para deprecaciones aceleradas
-
-Si un proveedor anuncia deprecación con menos de 30 días de notice (caso
-raro pero posible):
-
-1. Activar fallback inmediatamente (rutea a proveedor secundario).
-2. Acelerar evaluación del reemplazo (golden dataset en 24-48h).
-3. Skip shadow mode si la urgencia lo requiere, ir directo a canary.
-4. Migración completa en 2 semanas o menos.
-
-Esto solo es posible si la arquitectura del Gateway está implementada y
-el secundario está activo. De ahí la importancia de la inversión inicial.
-
----
-
-## 9. Optimización proactiva
-
-### 9.1 Job mensual de evaluación
-
-Primer lunes de cada mes, ejecutar automáticamente:
-
-```bash
-# Para cada tarea, evaluar todos los modelos disponibles
-for task in taskRegistry:
-    for model in availableModels:  # incluye nuevos lanzamientos del mes
-        results = runGoldenDataset(task, model)
-        report.append({
-            task,
-            model,
-            cost,
-            latency,
-            qualityScore,
-            comparedToCurrent
-        })
-
-# Generar reporte automático
-generateReport(report)
-notifyTeam(report)
-```
-
-### 9.2 Formato del reporte mensual
+### 7.7 Formato del reporte
 
 ```
 ═══════════════════════════════════════════════════════════
    AI MODEL EVALUATION REPORT - 2026-05
 ═══════════════════════════════════════════════════════════
 
-TASK: generate_initial_roadmap
-Current: claude-haiku-4-5 ($0.0004/call, 96.0% pass rate, 1.4s)
+TASK: detect_grammar_errors
+Current: claude-haiku-4-5 ($0.0004/call, 96.0% pass, 1.4s)
 
 Alternatives evaluated:
 ┌──────────────────┬──────────┬──────────┬──────────┬──────────┐
@@ -531,255 +868,457 @@ Recommendation: Initiate migration to claude-haiku-5
   - Same provider (low risk)
   - 25% cost reduction
   - +2% quality improvement
-  - Similar latency
-
-[... mismo análisis para todas las tareas ...]
 
 ESTIMATED MONTHLY SAVINGS IF ALL MIGRATIONS APPROVED: $1,240
 ```
 
-### 9.3 Decisión humana, ejecución automatizada
-
-El reporte recomienda, pero la decisión final de migrar es humana. Una
-vez aprobada, el rollout sigue el proceso estándar de migración progresiva
-sin intervención manual adicional.
+Decisión humana, ejecución automatizada (rollout sigue protocolo §8).
 
 ---
 
-## 10. Manejo de cambios de precio
+## 8. Migración progresiva (rollout)
 
-### 10.1 Diferencia con deprecaciones
+### 8.1 Fases
 
-Los cambios de precio son más frecuentes y menos disruptivos, pero
-requieren respuesta operativa específica.
+**Fase 0 — Evaluación offline (días 1-3):**
+Correr golden dataset contra modelo candidato. Si pasa quality
+threshold, continuar.
 
-### 10.2 Detección
+**Fase 1 — Shadow mode (días 4-10):**
+- 100% del tráfico va al modelo actual y se le devuelve al usuario.
+- Mismo input se envía en paralelo al candidato.
+- Outputs del candidato se loggean pero NO se le muestran al usuario.
+- Comparación automática.
 
-Tracking automático de costos por tarea: alerta si el costo por llamada
-sube más de X% respecto a baseline histórica de los últimos 30 días.
+**Fase 2 — Canary 5% (días 11-15):**
+- 5% del tráfico real va al candidato.
+- Métricas: costo, latencia, validation rate, error rate.
+- Idealmente, métrica de producto (ej: tasa de completion del
+  onboarding).
 
-### 10.3 Respuesta operativa
+**Fase 3 — Ramp up (días 16-25):**
+- 5% → 25%, esperar 2-3 días, evaluar.
+- 25% → 50%, esperar, evaluar.
+- 50% → 100%.
 
-**Si el cambio de precio es a la baja**: actualizar baseline, posiblemente
-revisar la economía del producto si la mejora es significativa.
+**Fase 4 — Modelo viejo en fallback (días 26+):**
+- Modelo viejo queda en fallback chain.
+- 30 días después, se retira.
 
-**Si el cambio es al alza < 20%**: absorber, no requiere acción inmediata
-si los márgenes lo permiten.
+### 8.2 Criterios de rollback automático
 
-**Si el cambio es al alza > 20%**:
-1. Evaluar si conviene migrar a otro proveedor (job de evaluación express).
-2. Si no, ajustar el costo en Sparks de las operaciones afectadas.
-3. NO ajustar el precio mensual al usuario.
+Rollback si **alguno** de:
 
-### 10.4 Sparks como buffer económico
+- Validation rate cae > 3% respecto a baseline.
+- Latencia p95 sube > 50% respecto a baseline.
+- Error rate del proveedor sube > 2%.
+- Costo por llamada sube inesperadamente > 20%.
 
-El sistema de Sparks (ver `docs/architecture/sparks-system.md`) está diseñado
-explícitamente para absorber cambios de costo sin afectar al usuario.
-
-Si Claude Haiku sube 30%, una operación que antes costaba 1 Spark ahora
-puede costar 1.3 Sparks. El usuario sigue viendo la misma cantidad mensual
-de Sparks en su plan.
-
-### 10.5 Provisioned throughput (cuando aplique)
-
-Para tareas críticas y de alto volumen, evaluar contratos de capacidad
-reservada con proveedores que lo ofrecen (Anthropic tiene esta opción a
-partir de cierto volumen). Esto da:
-
-- Precio fijo por contrato.
-- Capacidad garantizada (no rate limits).
-- Aislamiento de cambios de precio durante el contrato.
-
-Solo justificable a partir de cierto volumen.
-
----
-
-## 11. Multi-proveedor activo
-
-### 11.1 Configuración mínima por categoría de tarea
-
-| Categoría | Proveedor primario | Secundario | Terciario |
-|-----------|-------------------|------------|-----------|
-| Realtime crítico | 95% tráfico | 5% tráfico | Solo fallback de emergencia |
-| Batch | 100% tráfico | Solo fallback | Solo fallback |
-| Background | 100% tráfico | Solo fallback | — |
-
-### 11.2 Por qué mantener 5% activo en el secundario
-
-- **Fallback verificado**: confirma que la integración funciona, no solo
-  que está configurada.
-- **Datos comparativos**: 5% del tráfico es suficiente para mantener
-  métricas comparativas en tiempo real.
-- **Negociación**: poder mostrar al primario que existe migración real
-  posible mejora condiciones comerciales.
-- **Capacidad de scale-up**: si el primario tiene problema, el secundario
-  ya tiene cache caliente y conexiones establecidas.
-
-### 11.3 Costo del seguro
-
-Para una tarea que cuesta $100/mes en el primario, mantener el 5% en el
-secundario cuesta aproximadamente $5/mes. Es un seguro extremadamente
-barato comparado con el costo de un outage o migración de emergencia.
-
----
-
-## 12. Modelos propios en el Gateway
-
-### 12.1 Tratamiento uniforme
-
-Los modelos propios (entrenados internamente) son "un proveedor más" en
-el Gateway. La capa de abstracción no distingue entre Claude API y un
-modelo de pronunciación corriendo en Modal o GPU propia.
-
-### 12.2 Configuración típica
+### 8.3 Implementación en Registry
 
 ```typescript
-evaluate_pronunciation: {
+'detect_grammar_errors': {
   primary: {
-    provider: 'self-hosted',
-    model: 'pronunciation-v3',
-    endpoint: 'https://ml.internal/pronunciation/v3',
-    promptVersion: 'n/a'
+    provider: 'anthropic',
+    model: 'claude-haiku-4-5',
+    prompt_version: 'v2_claude',
   },
-  fallbackChain: [
-    {
-      provider: 'azure',
-      model: 'pronunciation-assessment',
-      promptVersion: 'n/a'
+  experimental: {
+    config: {
+      provider: 'anthropic',
+      model: 'claude-haiku-5',
+      prompt_version: 'v3_claude',
+    },
+    traffic_pct: 5,
+    mode: 'canary',
+    started_at: '2026-04-25T00:00:00Z',
+    rollback_criteria: {
+      max_validation_rate_drop: 0.03,
+      max_latency_p95_increase_ratio: 1.5,
+      max_error_rate_increase: 0.02,
+      max_cost_increase_ratio: 1.2,
+    },
+  },
+  // ...
+},
+```
+
+---
+
+## 9. Manejo de deprecaciones
+
+### 9.1 Detección automática
+
+Job semanal de CI verifica estado de cada modelo en uso:
+
+```typescript
+for (const task of taskRegistry) {
+  for (const config of [task.primary, ...task.fallback_chain]) {
+    const status = await checkModelDeprecation(config);
+    if (status.deprecated) {
+      await createGitHubIssue({
+        title: `Deprecation: ${config.model}`,
+        body: `Sunset: ${status.sunset_date}, replacement: ${status.replacement}`,
+        labels: ['ai-deprecation', 'priority-medium'],
+      });
     }
-  ]
+  }
 }
 ```
 
-### 12.3 Beneficios del tratamiento uniforme
+### 9.2 Proceso de respuesta
 
-- Si el modelo propio falla (bug, infra caída), fallback automático a API.
-- Si la API externa tiene problemas, modelo propio toma el tráfico.
-- Migración gradual de tráfico de API a modelo propio sigue mismo protocolo
-  que cualquier otra migración.
-- A/B testing entre modelo propio y API es trivial.
+| Día | Acción |
+|-----|--------|
+| 0 | Issue automático creado, equipo notificado |
+| 1–3 | Identificar modelo de reemplazo |
+| 4–10 | Correr golden dataset, ajustar prompts |
+| 11–30 | Rollout progresivo (§8) |
+| 30 | Modelo nuevo sirve 100% |
+| 30–90 | Modelo viejo en fallback |
+| 90+ | Modelo viejo retirado |
+
+Generalmente proveedores dan 6–12 meses de notice; el proceso debería
+tomar < 30 días.
+
+### 9.3 Plan de contingencia (deprecation acelerada)
+
+Si proveedor anuncia deprecation con < 30 días:
+
+1. Activar fallback inmediatamente.
+2. Acelerar evaluación del reemplazo (golden dataset en 24-48h).
+3. Skip shadow mode si urgencia lo requiere; ir directo a canary.
+4. Migración completa en 2 semanas o menos.
+
+Solo posible si arquitectura del Gateway está implementada y el
+secundario está activo. De ahí la importancia de la inversión inicial.
 
 ---
 
-## 13. Observabilidad
+## 10. Cost tracking y observability
 
-### 13.1 Métricas mínimas por llamada
+### 10.1 Métricas mínimas por llamada
 
 Cada invocación del Gateway registra:
 
-```typescript
-{
-  taskId: string;
-  modelUsed: string;
-  promptVersion: string;
-  startedAt: timestamp;
-  completedAt: timestamp;
-  latencyMs: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-  validationPassed: boolean;
-  validationErrors?: string[];
-  retryAttempts: number;
-  fallbackUsed: boolean;
-  userId?: string;  // hasheado para privacy
-  experimentVariant?: string;  // si es parte de A/B test
-}
+```sql
+CREATE TABLE ai_gateway_invocations (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id         TEXT NOT NULL,
+  model_used      TEXT NOT NULL,
+  prompt_version  TEXT NOT NULL,
+  started_at      TIMESTAMPTZ NOT NULL,
+  completed_at    TIMESTAMPTZ NOT NULL,
+  latency_ms      INT NOT NULL,
+  input_tokens    INT,
+  output_tokens   INT,
+  cost_usd        NUMERIC(10,6) NOT NULL,
+  validation_passed BOOLEAN NOT NULL,
+  validation_errors JSONB,
+  retry_attempts  INT NOT NULL DEFAULT 0,
+  fallback_used   BOOLEAN NOT NULL DEFAULT false,
+  user_id_hash    TEXT,                 -- SHA-256
+  experiment_variant TEXT,              -- si A/B test
+  trace_id        TEXT
+);
+
+CREATE INDEX idx_ai_invocations_task_date ON ai_gateway_invocations(task_id, started_at DESC);
+CREATE INDEX idx_ai_invocations_user ON ai_gateway_invocations(user_id_hash, started_at DESC) WHERE user_id_hash IS NOT NULL;
+CREATE INDEX idx_ai_invocations_model ON ai_gateway_invocations(model_used, started_at DESC);
 ```
 
-### 13.2 Dashboard interno
+Retention: 90 días detallado; agregados mensuales indefinidos.
 
-Página interna (admin panel) que muestra:
+### 10.2 Dashboard interno
 
-- **Por tarea**: modelo actual, costo promedio, validation rate, latencia
-  p50/p95/p99 en últimas 24h, 7d, 30d.
-- **Experimentos activos**: tareas en shadow o canary, métricas comparativas
-  en tiempo real.
-- **Alertas activas**: deprecaciones anunciadas, picos de costo, fallos
-  recientes.
-- **Tendencias**: costo total mensual de IA, distribución por tarea, evolución
-  semana a semana.
+Página interna admin que muestra:
 
-### 13.3 Alertas críticas
+- **Por task:** modelo actual, costo promedio, validation rate,
+  latencia p50/p95/p99 en 24h, 7d, 30d.
+- **Experimentos activos:** tasks en shadow o canary, métricas
+  comparativas en tiempo real.
+- **Alertas activas:** deprecaciones anunciadas, picos de costo,
+  fallos recientes.
+- **Tendencias:** costo total mensual, distribución por task,
+  evolución semana a semana.
 
-Configuradas para notificar inmediatamente (Slack, email, según preferencia):
+### 10.3 Alertas críticas
 
 - Costo del día > 2x promedio histórico.
-- Validation rate de cualquier tarea < 90%.
+- Validation rate de cualquier task < 90%.
 - Latencia p95 > 2x baseline.
 - Cualquier usuario individual con costo > $1 en 24h.
 - Proveedor primario con error rate > 5%.
-- Anuncio de deprecación detectado en endpoint del proveedor.
+- Anuncio de deprecation detectado.
+
+### 10.4 Cost tracking por usuario
+
+```sql
+CREATE TABLE ai_cost_per_user_daily (
+  user_id_hash    TEXT NOT NULL,
+  date            DATE NOT NULL,
+  total_cost_usd  NUMERIC(10,4) NOT NULL,
+  invocations     INT NOT NULL,
+  PRIMARY KEY (user_id_hash, date)
+);
+```
+
+Recalculado por cron diario. Permite identificar usuarios anómalos
+(probable bug o abuso).
 
 ---
 
-## 14. Herramientas recomendadas
+## 11. API contracts
 
-### 14.1 Build vs buy
+### 11.1 `executeTask`
 
-Construir todo el AI Gateway desde cero es trabajo significativo. Existen
-herramientas open source y servicios managed que cubren partes de la
-estrategia.
+**Llamado por:** cualquier sistema que necesita IA.
 
-### 14.2 Stack recomendado para empezar solo
+**Request:**
 
-| Componente | Herramienta | Justificación |
-|------------|-------------|---------------|
-| Adapter multi-proveedor | LiteLLM (open source) | Interfaz unificada para múltiples LLMs, gratis |
-| Observability + logs | Langfuse o Helicone | Logging y dashboards específicos para LLMs, tier gratuito |
-| Validation | Zod (TypeScript) | Type-safe, integración natural |
-| Golden datasets | Promptfoo o Braintrust | Frameworks de evaluación, tier gratuito |
-| A/B testing | Implementación propia sobre LiteLLM | Lógica simple en el Gateway |
+```typescript
+interface ExecuteTaskRequest<TInput> {
+  task_id: string;
+  input: TInput;                       // matchea task.input_schema
+  user_id?: string;                    // para Sparks charge + cost tracking
+  trace_id?: string;
+  metadata?: Record<string, unknown>;
+}
+```
 
-Esta combinación da el 70% de la estrategia con esfuerzo mínimo. El 30%
-restante (lógica específica del Gateway, integración con el sistema de
-Sparks, dashboards custom) se construye internamente.
+**Response:**
 
-### 14.3 Cuándo construir más cosas internamente
+```typescript
+interface ExecuteTaskResponse<TOutput> {
+  output: TOutput;                     // matchea task.output_schema
+  metadata: {
+    invocation_id: string;
+    model_used: string;
+    cost_usd: number;
+    latency_ms: number;
+    fallback_used: boolean;
+    experiment_variant: string | null;
+  };
+}
+```
 
-A partir de cierta escala (típicamente 50.000+ usuarios activos o equipo
-con >5 personas), puede tener sentido construir piezas más sofisticadas:
+**Errores:**
 
-- Gateway propio en Go o Rust para máximo rendimiento.
-- Sistema de evaluación más rico que Promptfoo.
-- Provisioned throughput negociado directamente con proveedores.
+| Código | Causa |
+|--------|-------|
+| `TASK_NOT_REGISTERED` | `task_id` no existe |
+| `INPUT_VALIDATION_FAILED` | Input no matchea Zod schema |
+| `INSUFFICIENT_SPARKS` | `chargeOperation` rechazó |
+| `RESTRICTED_FEATURE` | User restriction deniega operation |
+| `OUTPUT_VALIDATION_FAILED_PERSISTENT` | Output del LLM falla validation incluso después de retry + fallback |
+| `ALL_PROVIDERS_FAILED` | Primary y todo el fallback chain fallaron |
+| `TIMEOUT` | Excedió `task.timeout_ms` |
+| `BUDGET_EXCEEDED` | `task.max_cost_usd` excedido (con fallback ya intentado) |
 
-Antes de eso, las herramientas managed son la decisión correcta.
+### 11.2 Flujo de `executeTask`
+
+```typescript
+async function executeTask<TInput, TOutput>(
+  req: ExecuteTaskRequest<TInput>
+): Promise<ExecuteTaskResponse<TOutput>> {
+  const task = registry.get(req.task_id);
+  if (!task) throw new Error('TASK_NOT_REGISTERED');
+
+  // 1. Validar input
+  const input = task.input_schema.parse(req.input);
+
+  // 2. Cobrar Sparks (si aplica)
+  let charge: ChargeOperationResponse | null = null;
+  if (task.sparks_operation_id && req.user_id) {
+    charge = await sparks.chargeOperation({
+      user_id: req.user_id,
+      operation_id: task.sparks_operation_id,
+      idempotency_key: `task:${req.trace_id ?? randomUUID()}`,
+    });
+  }
+
+  // 3. Decidir variante (control / experimental)
+  const variant = decideVariant(task);
+
+  // 4. Cargar prompt
+  const prompt = await loadPrompt(task.id, variant.config.prompt_version);
+
+  // 5. Ejecutar con retry y fallback
+  let response: ProviderResponse | null = null;
+  let lastError: Error | null = null;
+  let fallbackUsed = false;
+
+  const candidates = [variant.config, ...task.fallback_chain];
+
+  for (const config of candidates) {
+    try {
+      response = await invokeWithRetry(config, prompt, input, task);
+
+      // 6. Validar output
+      const parsed = task.output_schema.safeParse(JSON.parse(response.output));
+      if (parsed.success) {
+        // ¡Listo!
+        await logInvocation({ /* metrics */ });
+        return {
+          output: parsed.data as TOutput,
+          metadata: {
+            invocation_id: response.invocation_id,
+            model_used: config.model,
+            cost_usd: response.usage.cost_usd,
+            latency_ms: response.latency_ms,
+            fallback_used: fallbackUsed,
+            experiment_variant: variant.experiment_variant,
+          },
+        };
+      } else {
+        // Validation falló, intentar 1 retry con feedback
+        const retryPrompt = prompt + '\n\nERROR EN OUTPUT ANTERIOR: ' + parsed.error.message;
+        const retryResp = await invokeWithRetry(config, retryPrompt, input, task);
+        const retryParsed = task.output_schema.safeParse(JSON.parse(retryResp.output));
+        if (retryParsed.success) {
+          await logInvocation({ /* metrics with retry */ });
+          return { output: retryParsed.data, metadata: { /* ... */ } };
+        }
+        // Fallback al siguiente provider
+        lastError = new Error('OUTPUT_VALIDATION_FAILED');
+        fallbackUsed = true;
+        continue;
+      }
+    } catch (err) {
+      lastError = err;
+      fallbackUsed = true;
+      continue;
+    }
+  }
+
+  // 7. Refund de Sparks si todo falla
+  if (charge) {
+    await sparks.refundOperation({
+      charge_id: charge.charge_id,
+      reason: 'all_providers_failed',
+    });
+  }
+
+  throw lastError ?? new Error('ALL_PROVIDERS_FAILED');
+}
+```
+
+### 11.3 `getTaskMetrics`
+
+**Llamado por:** dashboard interno, monitoring.
+
+```typescript
+interface GetTaskMetricsRequest {
+  task_id: string;
+  period: '1h' | '24h' | '7d' | '30d';
+}
+
+interface GetTaskMetricsResponse {
+  invocations: number;
+  validation_pass_rate: number;
+  fallback_rate: number;
+  avg_cost_usd: number;
+  total_cost_usd: number;
+  latency_p50_ms: number;
+  latency_p95_ms: number;
+  latency_p99_ms: number;
+  by_model: Array<{
+    model: string;
+    invocations: number;
+    avg_cost_usd: number;
+  }>;
+}
+```
 
 ---
 
-## 15. Plan de implementación incremental
+## 12. Edge cases (tests obligatorios)
 
-### 15.1 Fase 1: Foundation (mes 1)
+### 12.1 Provider failures
 
-- Implementar AI Gateway básico con LiteLLM como adapter.
-- Definir Task Registry inicial con las primeras 3-5 tareas.
-- Logging básico de cada llamada (costo, latencia, resultado).
-- Validation con Zod para cada tarea.
-- Un solo proveedor por tarea (sin fallbacks aún).
+1. **Primary 503:** automatic fallback a secondary. Sin error visible al
+   llamador.
+2. **Primary timeout:** mismo, fallback.
+3. **Todos los providers fallan:** error `ALL_PROVIDERS_FAILED` al
+   llamador. Sparks refunded.
+4. **Provider returns 200 pero output vacío:** validation falla, retry
+   1x con feedback, si vuelve a fallar: fallback.
 
-### 15.2 Fase 2: Resilience (meses 2-3)
+### 12.2 Output validation
 
-- Agregar fallback chain a cada tarea.
-- Implementar retry con backoff exponencial.
-- Setup de Langfuse o Helicone para observabilidad.
-- Primer dashboard interno con métricas básicas.
+5. **Output JSON malformado:** retry 1x; si falla, fallback.
+6. **Output JSON válido pero no matchea Zod schema:** retry 1x con
+   feedback ("output anterior tenía estos errores: X"); si falla,
+   fallback.
+7. **Output dice "I cannot help with that":** validation falla
+   (schema no matchea), retry/fallback.
 
-### 15.3 Fase 3: Quality (meses 3-6)
+### 12.3 Idempotency y trace
 
-- Construir golden datasets para tareas críticas (mínimo 30 casos cada una).
-- Setup de evaluación automática con Promptfoo.
-- Implementar shadow mode en el Gateway.
-- Versionado de prompts por modelo.
+8. **executeTask llamado 2 veces con mismo idempotency_key:** segundo
+   retorna cached result, no re-invoca.
+9. **Trace_id propagado a logs:** verificable en
+   `ai_gateway_invocations.trace_id`.
 
-### 15.4 Fase 4: Optimization (meses 6-9)
+### 12.4 Sparks integration
 
-- Implementar canary mode con rampa progresiva.
-- Job mensual de evaluación de modelos alternativos.
-- Sistema de alertas críticas configurado.
-- Procesos de respuesta a deprecaciones documentados.
+10. **Sparks charge falla (insufficient):** `executeTask` retorna
+    error `INSUFFICIENT_SPARKS` sin invocar al modelo.
+11. **Modelo invoca exitoso pero Sparks refund falla:** alerta crítica.
+    Operation result se devuelve al usuario; reconciliación posterior
+    corrige Sparks balance.
 
-### 15.5 Fase 5: Self-hosted integration (meses 9-12)
+### 12.5 Experiments
+
+12. **5% canary:** verificable que aprox 5% de invocations tienen
+    `experiment_variant != null`.
+13. **Rollback automático:** dado validation rate del experimental
+    cae > 3%, experiment_variant deja de routar tráfico.
+
+### 12.6 Costos
+
+14. **Invocation excede `max_cost_usd`:** alerta + log; operación se
+    completa pero se marca para review.
+15. **Usuario individual gasta > $1 en 24h:** alerta automática a
+    Sentry para review humano (potencial bug o abuso).
+
+---
+
+## 13. Plan de implementación
+
+### 13.1 Fase 1: Foundation (mes 1)
+
+- AI Gateway básico con LiteLLM como adapter.
+- Task Registry inicial con 3-5 tareas (transcribe, score_pronunciation,
+  detect_grammar_errors, generate_initial_roadmap, generate_morning_message).
+- Logging básico (cost, latency, validation result).
+- Validation con Zod para cada task.
+- Un solo proveedor por task (sin fallbacks aún).
+- Integración con Sparks: `chargeOperation` antes de invocar.
+
+### 13.2 Fase 2: Resilience (meses 2-3)
+
+- Fallback chain a cada task.
+- Retry con backoff exponencial.
+- Setup de Langfuse para observabilidad.
+- Primer dashboard interno.
+- Idempotency keys.
+
+### 13.3 Fase 3: Quality (meses 3-6)
+
+- Golden datasets para tasks críticas (≥ 30 casos cada una).
+- Setup de Promptfoo.
+- Implementar shadow mode.
+- Versionado de prompts por modelo (v1 → v2).
+
+### 13.4 Fase 4: Optimization (meses 6-9)
+
+- Canary mode con rampa progresiva.
+- Job mensual de evaluación de modelos.
+- Sistema de alertas críticas.
+- Procesos de respuesta a deprecaciones.
+
+### 13.5 Fase 5: Self-hosted (meses 9-12)
 
 - Integrar primeros modelos propios al Gateway.
 - Migración progresiva de tráfico de API a modelo propio.
@@ -787,40 +1326,106 @@ Antes de eso, las herramientas managed son la decisión correcta.
 
 ---
 
-## 16. Métricas de éxito de la estrategia
+## 14. Métricas
 
-Indicadores que demuestran que la estrategia funciona:
+### 14.1 Métricas críticas
 
-- **Tiempo de migración a un modelo nuevo**: menos de 30 días desde decisión
-  hasta 100% rollout.
-- **Cero outages causados por cambios de proveedor**.
-- **Captura de ahorros**: cada trimestre, identificar y capturar al menos
-  una optimización de costo significativa.
-- **Costo de IA como % del revenue**: tendencia a la baja trimestre a
-  trimestre, no por menor uso sino por mejor gestión.
-- **Tiempo entre anuncio de deprecación y migración completa**: < 60 días
-  consistentemente.
+| Métrica | Target |
+|---------|--------|
+| Tiempo de migración a modelo nuevo (decisión → 100% rollout) | < 30 días |
+| Outages causados por cambios de proveedor | 0 |
+| Captura de ahorros (ahorro identificado / ahorro capturado) | ≥ 80% |
+| Costo de IA como % del revenue | Decreciente trimestre a trimestre |
+| Tiempo entre anuncio de deprecation y migración completa | < 60 días |
+| Validation rate global | > 95% |
+| Fallback rate global | < 5% |
 
----
+### 14.2 Alertas
 
-## 17. Decisiones abiertas
-
-- [ ] ¿Construir Gateway propio o usar Portkey/OpenRouter como Gateway managed?
-- [ ] ¿Promptfoo o Braintrust para evaluación? (probar ambos)
-- [ ] ¿Cómo versionar prompts? ¿Archivos en repo o servicio externo (PromptLayer)?
-- [ ] Política de retención de logs de llamadas a LLMs (privacy + costo storage).
-- [ ] ¿Qué tareas justifican mantener 5% activo en secundario vs solo fallback?
-
----
-
-## 18. Referencias internas
-
-- `docs/business/plan_de_negocio.docx` — Plan de negocio general.
-- `docs/product/ai-roadmap-system.md` — Sistema de roadmap (consumidor del Gateway).
-- `docs/architecture/sparks-system.md` — Sistema de tokens (a crear).
-- `docs/decisions/ADR-001-ai-gateway.md` — Decisión arquitectónica (a crear).
+- Costo del día > 2x promedio: SEV-2.
+- Validation rate de cualquier task < 90%: SEV-2.
+- Latencia p95 > 2x baseline: SEV-2.
+- Usuario individual > $1 en 24h: review.
+- Provider primario con error rate > 5%: SEV-2.
+- Anuncio de deprecation detectado: review.
+- Todos los providers de un task failing: SEV-1.
 
 ---
 
-*Documento vivo. Actualizar cuando cambien proveedores, herramientas o cuando
-se aprenda de la implementación.*
+## 15. Decisiones cerradas
+
+### 15.1 Build vs Buy del Gateway: **LiteLLM + custom logic** ✓
+
+**Razón:** LiteLLM cubre 70% gratis. Construir todo desde cero es 3-6
+meses sin diferenciación. Servicios managed (Portkey, OpenRouter)
+agregan vendor lock-in y costos por volumen.
+
+### 15.2 Promptfoo vs Braintrust: **probar ambos en evaluación** ✓
+
+**Razón:** ambos tienen tier gratuito. Decidir basado en qué framework
+es más cómodo después de uso real. Default arranque: Promptfoo (más
+simple).
+
+### 15.3 Versionado de prompts: **archivos en repo (no servicio externo)** ✓
+
+**Razón:** PromptLayer u otros agregan dependencia externa para algo
+que git resuelve. Cambios pasan por PR review (auditoría natural).
+
+### 15.4 Retención de logs de llamadas: **90 días detallado, agregados
+indefinidos** ✓
+
+**Razón:** detallados son grandes y privacidad; agregados son chicos
+y útiles para análisis histórico. 90 días es suficiente para forensia
+de incidentes.
+
+### 15.5 % activo del secundario por categoría: **5% en realtime
+crítico, solo fallback en batch/background** ✓
+
+**Razón:** verificación de fallback + datos comparativos vale la pena
+solo en realtime crítico. Batch/background pueden vivir con
+fallback frío (acepta latencia adicional cuando se activa).
+
+---
+
+## 16. Aspectos de costo
+
+### 16.1 Costos del stack
+
+(De ai-roadmap-system §8.3, contextualizado para AI Gateway:)
+
+A 100k usuarios activos, costo de IA es aproximadamente $1.000–$1.500/mes
+distribuido entre todas las tasks.
+
+### 16.2 Provisioned throughput
+
+Para tasks críticas y de alto volumen, evaluar contratos de capacidad
+reservada con proveedores que lo ofrecen (Anthropic Provisioned
+Throughput a partir de cierto volumen). Da:
+
+- Precio fijo por contrato.
+- Capacidad garantizada (no rate limits).
+- Aislamiento de cambios de precio durante el contrato.
+
+Solo justificable a partir de cierto volumen (post-soft-launch).
+
+---
+
+## 17. Referencias internas
+
+| Documento | Relación |
+|-----------|----------|
+| [`sparks-system.md`](sparks-system.md) | Cobra Sparks antes de cada invocación. |
+| [`../decisions/ADR-001-ai-gateway.md`](../decisions/ADR-001-ai-gateway.md) | Decisión arquitectónica. |
+| [`../product/pedagogical-system.md`](../product/pedagogical-system.md) | Consume tasks: transcribe_user_audio, score_pronunciation, detect_grammar_errors, evaluate_listening_response. |
+| [`../product/ai-roadmap-system.md`](../product/ai-roadmap-system.md) | Consume tasks: generate_initial_roadmap, nightly_roadmap_update, generate_definitive_roadmap. |
+| [`../product/student-profile-and-assessment.md`](../product/student-profile-and-assessment.md) | Consume scoring tasks durante assessment. |
+| [`notifications-system.md`](notifications-system.md) | Consume generate_notification_content y generate_morning_message en batch nocturno. |
+| [`../business/customer-support-system.md`](../business/customer-support-system.md) | Consume ai_assistant_response. |
+| [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) §5.11 | Eventos `ai.task_completed`. |
+| [`../cross-cutting/security-threat-model.md`](../cross-cutting/security-threat-model.md) §3.4 | Amenazas LLM-specific. |
+| [`../cross-cutting/testing-strategy.md`](../cross-cutting/testing-strategy.md) §4.9 | Tests obligatorios. |
+
+---
+
+*Documento vivo. Actualizar cuando se agreguen tasks nuevas, cambien
+proveedores o se aprenda de la implementación.*
