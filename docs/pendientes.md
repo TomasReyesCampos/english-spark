@@ -178,20 +178,32 @@ resuelto al tomar decisión y mover el detalle al documento correspondiente.
 ADRs y otros documentos que están referenciados desde los sistemas
 existentes pero aún no se han creado:
 
-- [ ] `docs/decisions/ADR-001-ai-gateway.md` — Decisión arquitectónica del
-  Gateway.
-- [ ] `docs/decisions/ADR-002-platform-strategy.md` — ADR formal de mobile-first.
-- [ ] `docs/decisions/ADR-003-sparks-system.md` — ADR formal de Sparks.
-- [ ] `docs/decisions/ADR-004-notifications-fcm.md` — ADR de elección de FCM.
-- [ ] `docs/decisions/ADR-005-firebase-auth.md` — ADR de Firebase Auth.
-- [ ] `docs/decisions/ADR-006-trial-assessment.md` — ADR del trial de 7 días.
+- [x] `docs/decisions/ADR-001-ai-gateway.md` — Decisión arquitectónica del
+  Gateway. ✓ creado.
+- [x] `docs/decisions/ADR-002-platform-strategy.md` — ADR formal de mobile-first.
+  ✓ creado.
+- [x] `docs/decisions/ADR-003-sparks-system.md` — ADR formal de Sparks.
+  ✓ creado.
+- [x] `docs/decisions/ADR-004-notifications-fcm.md` — ADR de elección de FCM.
+  ✓ creado.
+- [x] `docs/decisions/ADR-005-firebase-auth.md` — ADR de Firebase Auth.
+  ✓ creado.
+- [x] `docs/decisions/ADR-006-trial-assessment.md` — ADR del trial de 7 días.
+  ✓ creado.
 - [ ] `docs/decisions/ADR-XXX-llm-selection.md` — Decisión sobre proveedores
   LLM por tarea.
 - [ ] `docs/decisions/sparks-pricing-changes.md` — Log histórico de ajustes
-  de costo en Sparks.
-- [ ] `docs/architecture/01-overview.md` — Arquitectura general.
+  de costo en Sparks (vacío hasta primer ajuste).
+- [x] `docs/architecture/01-overview.md` — Arquitectura general. ✓ creado.
 - [ ] `docs/product/learning-blocks-taxonomy.md` — Taxonomía de la
-  biblioteca.
+  biblioteca de bloques.
+- [ ] `docs/cross-cutting/data-and-events.md` — Modelo unificado de eventos.
+- [ ] `docs/cross-cutting/security-threat-model.md` — STRIDE por sistema.
+- [ ] `docs/cross-cutting/testing-strategy.md` — Unit + integration (no E2E).
+- [ ] `docs/cross-cutting/i18n.md` — Estrategia de localización.
+- [ ] `docs/business/legal-compliance.md` — T&C, privacy, GDPR/LFPDPPP.
+- [ ] `docs/ops/incidents-runbook.md` — Manejo de incidentes.
+- [ ] `docs/ops/cicd.md` — Pipelines de CI/CD.
 
 ---
 
