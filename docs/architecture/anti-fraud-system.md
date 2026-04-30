@@ -1,13 +1,33 @@
 # Anti-Fraud and Abuse Prevention System
 
-> Sistema integral para prevenir, detectar y responder a abusos del
-> producto: cuentas falsas, farming de Sparks, account sharing,
-> chargebacks fraudulentos, y otros vectores de pérdida.
+> Sistema integral para prevenir, detectar y responder a abusos:
+> cuentas falsas, farming de Sparks, account sharing, chargebacks
+> fraudulentos, manipulación de métricas. Filosofía: prevención >
+> detección > castigo.
 
-**Estado:** Diseño v1.0
+**Estado:** Diseño v1.1 (profundizado para implementación)
 **Última actualización:** 2026-04
 **Owner:** —
+**Audiencia primaria:** agente AI implementador.
 **Alcance:** Sistema completo
+
+---
+
+## 0. Cómo leer este documento
+
+- §1 establece **filosofía y modelo de amenazas**.
+- §2 cubre **boundaries**.
+- §3 cubre **prevención por diseño**.
+- §4 cubre **detección activa** (fraud scoring).
+- §5 cubre **niveles de respuesta**.
+- §6 cubre **casos específicos** detallados.
+- §7 cubre **schemas Postgres**.
+- §8 cubre **API contracts**.
+- §9 cubre **eventos emitidos**.
+- §10 enumera **edge cases**.
+- §11 cubre **observabilidad**.
+- §12 cubre **decisiones cerradas**.
+- §13 cubre **aspectos legales**.
 
 ---
 
@@ -15,88 +35,101 @@
 
 ### 1.1 El problema invisible
 
-A pequeña escala, el fraude parece despreciable. A escala, no lo es:
+A pequeña escala parece despreciable. A escala, no:
 
 - 100 cuentas falsas farmeando Sparks: pocos dólares de pérdida.
-- 10.000 cuentas falsas farmeando Sparks: miles de dólares y degrada el
-  sistema (logros pierden valor, leagues se contaminan, datos de producto
-  se distorsionan).
+- 10.000 cuentas falsas: miles de dólares + sistema degradado (logros
+  pierden valor, leagues contaminadas, datos distorsionados).
 
-### 1.2 Vectores de fraude en este producto
+### 1.2 Vectores de fraude
 
 **Farming de Sparks:**
-- Crear múltiples cuentas para acumular Sparks gratis del trial.
+- Crear múltiples cuentas para acumular trial Sparks.
 - Auto-referidos para ganar Sparks de referral.
-- Bots que generan actividad falsa para ganar logros.
+- Bots generando actividad falsa para logros.
 
 **Account sharing:**
-- Una cuenta paga compartida entre 5 personas.
-- Reduce conversion potencial.
+- Una cuenta paga compartida entre N personas.
 
 **Chargebacks fraudulentos:**
 - Pagar, usar el servicio, hacer chargeback.
-- Costoso (chargeback fee + revenue perdido + posible penalty).
 
 **Manipulación de métricas:**
-- Inflar artificialmente métricas (leagues, leaderboards).
-- Daña la experiencia de usuarios legítimos.
+- Inflar leagues/leaderboards artificialmente.
 
 **Abuso de soporte:**
 - Solicitudes de refund repetitivas.
-- Crear tickets falsos para drenar tiempo.
+- Tickets falsos para drenar tiempo.
 
 **Content abuse:**
-- Generar reportes falsos de assets.
-- Sabotear contenido para competidores.
+- Reportes falsos de assets.
 
 ### 1.3 Filosofía adoptada
 
-**Prevención > detección > castigo:**
-- Mejor diseñar el sistema para que el fraude sea costoso/imposible.
+**Prevención > detección > castigo.**
+
+- Mejor diseñar para que el fraude sea costoso/imposible.
 - Detectar lo que pase a pesar de la prevención.
 - Castigar solo cuando hay evidencia clara.
 
-**Friction proporcional al riesgo:**
-- No molestar a 99% de usuarios legítimos por proteger contra el 1% malicioso.
-- Aumentar fricción solo cuando hay señales sospechosas.
+**Friction proporcional al riesgo.**
 
-**Sistema invisible para usuarios honestos:**
-- Las protecciones funcionan en background.
-- El usuario legítimo no debe sentir el sistema.
+- No molestar al 99% honesto por proteger contra el 1% malicioso.
+- Aumentar fricción solo con señales sospechosas.
 
-**Iterar con datos:**
-- El fraude evoluciona. El sistema también debe evolucionar.
+**Sistema invisible para legítimos.**
 
----
+- Protecciones funcionan en background.
+- Usuario legítimo no debe sentir el sistema.
 
-## 2. Modelo de amenazas
+**Iterar con datos.**
 
-### 2.1 Tipos de actores
+- El fraude evoluciona. El sistema también.
 
-**Casual abuser:** usuario que rompe reglas ocasionalmente, generalmente
-sin malicia. Ej: comparte cuenta con un familiar.
+### 1.4 Modelo de amenazas
 
-**Self-server:** usuario que busca aprovechar el sistema para sí mismo.
-Ej: crea 5 cuentas para usar trial varias veces.
-
-**Small operator:** persona o pequeño grupo que sistemáticamente abusa
-para beneficio personal (revender cuentas, vender Sparks).
-
-**Sophisticated attacker:** actor con recursos técnicos que usa
-automatización (bots, fingerprint spoofing). Más raro pero más dañino.
-
-**Compromised account:** usuario legítimo cuya cuenta fue robada por un
-tercero.
-
-### 2.2 Severidad y frecuencia esperada
-
-| Tipo | Frecuencia esperada | Daño potencial | Prioridad |
-|------|---------------------|----------------|-----------|
-| Casual abuser | Alta (5-10% de usuarios) | Bajo individual | Baja |
-| Self-server | Media (1-3%) | Medio | Media |
+| Tipo de actor | Frecuencia | Daño potencial | Prioridad |
+|---------------|-----------|----------------|-----------|
+| Casual abuser | Alta (5–10%) | Bajo individual | Baja |
+| Self-server | Media (1–3%) | Medio | Media |
 | Small operator | Baja (<0.5%) | Alto | Alta |
 | Sophisticated attacker | Muy baja | Muy alto | Crítica si aparece |
 | Compromised account | Baja-media | Alto | Alta |
+
+---
+
+## 2. Boundaries
+
+### 2.1 Es responsable de
+
+- Generar y mantener `device_fingerprints`.
+- Calcular `fraud_score` por usuario (0-100).
+- Aplicar restricciones automáticas niveles 1-3.
+- Manejar apelaciones (recibir + tracking; resolución es humana).
+- Detectar patrones de signups duplicados.
+- Detectar self-referrals.
+- Emitir eventos cuando se aplica/lifteea restricción.
+
+### 2.2 NO es responsable de
+
+- **Detectar payment fraud:** Stripe Radar lo hace. Solo consumimos
+  resultado.
+- **Banear cuentas legítimas sin proceso:** todos los niveles 4-5
+  requieren revisión humana.
+- **Comunicación con el usuario:** delegar a `notifications-system`.
+- **Tickets de soporte:** delegar a `customer-support-system`.
+- **Borrar datos del usuario:** auth-system maneja deletion.
+- **Decidir fraud signals globales:** cada signal tiene definición
+  explícita y peso configurable. No magia.
+
+### 2.3 Tensiones
+
+| Tensión | Resolución |
+|---------|-----------|
+| Usuario con fraud_score alto pero legítimo | Niveles 1-3 son auto, niveles 4-5 requieren humano. Apelaciones rápidas. |
+| Familia comparte device | 2 cuentas/device permitido sin flag. 3+: investigación. |
+| Detección agresiva genera churn de legítimos | Métrica false positive rate < 5% como guardrail. |
+| Atacante aprende a evadir | Pesos de signals rotables; no exponer reglas exactas. |
 
 ---
 
@@ -106,197 +139,212 @@ tercero.
 
 #### Cap absoluto de Sparks
 
-Free trial otorga **máximo 50 Sparks**, no rolling, no acumulables. Aunque
-alguien cree 100 cuentas, no obtiene 100 × 50 Sparks utilizables (cada
-cuenta es independiente).
+Free trial otorga **máximo 50 Sparks**, no rolling, no acumulables.
+Aunque alguien cree 100 cuentas, no obtiene 100 × 50 utilizables (cada
+cuenta es independiente y no se pueden transferir).
 
 #### Limitaciones del trial
 
 Durante el trial:
-- No se pueden referir amigos (recompensa de referral solo después de pagar).
+- No se pueden referir amigos (recompensa solo después de pagar).
 - No se pueden acumular Sparks comprados.
-- No participan en leagues competitivas (evita contaminar leaderboards).
+- No participan en leagues (evita contaminar leaderboards).
 
 #### Trial expira con consecuencias claras
 
 Después del trial sin convertir:
 - Acceso solo a preassets gratis.
 - Cuenta queda activa pero limitada.
-- Crear nueva cuenta para "re-trial" no es atractivo si: misma device
-  detectada, mismo email, etc.
+- Crear nueva cuenta para "re-trial" no es atractivo si: device
+  detectado, email pattern, etc.
 
 ### 3.2 Fingerprinting de devices
 
 Para detectar múltiples cuentas del mismo device:
 
-**Datos capturados (no PII estricto):**
+**Datos capturados (no PII estricta):**
 - Device ID (Apple/Android device identifier).
 - Hash de combinación de hardware/software signals.
 - IP address y patrón de cambio.
 - Timezone y language settings.
-- Screen resolution y características del device.
+- Screen resolution y características.
 
-**Combinación genera fingerprint:**
+**Generación:**
 
 ```typescript
 function generateDeviceFingerprint(deviceInfo: DeviceInfo): string {
   const components = [
-    deviceInfo.deviceId,
+    deviceInfo.device_id,
     deviceInfo.platform,
-    deviceInfo.osVersion,
-    deviceInfo.modelName,
-    deviceInfo.screenSize,
+    deviceInfo.os_version,
+    deviceInfo.model_name,
+    deviceInfo.screen_size,
     deviceInfo.language,
     deviceInfo.timezone,
-    // Hash de IP /24 (no exact IP)
-    hashIpRange(deviceInfo.ip, 24)
+    hashIpRange(deviceInfo.ip, 24),  // /24 net, no IP exact
   ];
-
   return sha256(components.join('|'));
 }
 ```
 
 **Uso:**
-- Si nuevo signup tiene mismo fingerprint que cuenta existente, flag.
-- Si fingerprint matches con 5+ cuentas, restricción automática.
+- Si nuevo signup tiene mismo fingerprint que cuenta existente: flag.
+- Si fingerprint matches con 5+ cuentas: restricción automática.
 
-**Importante:** fingerprinting tiene limitaciones legales. En Europa
-(GDPR) requiere consent en algunos casos. Verificar compliance por
-jurisdicción.
+**Compliance:**
+- Fingerprinting puede ser regulado (GDPR, CCPA).
+- Disclosure en privacy policy.
+- Verificar por jurisdicción.
 
 ### 3.3 Verificación de email/teléfono
 
-**Email verification:**
-- Email verification enviado al registrarse.
-- Funcionalidades premium requieren email verificado.
-- Domains de email temporal (10minutemail, etc.) bloqueados.
+**Email:**
+- Verification al registrarse.
+- Funcionalidades premium requieren verified.
+- Domains de email temporal (10minutemail, etc.) bloqueados via
+  blocklist `disposable_email_domains`.
 
-**Phone verification (si se implementa Phone OTP):**
+**Phone OTP (cuando se agregue):**
 - Verificación de número real.
-- Bloqueo de números de SMS virtuales (Twilio numbers, etc.) detectables.
+- Bloqueo de números virtuales (Twilio, etc.) detectables.
 
 ### 3.4 Rate limiting agresivo
 
-**Por usuario:**
-- Máximo X conversaciones IA por minuto (anti-bot).
-- Máximo Y signups por device por mes.
-- Máximo Z referrals enviados por día.
+```typescript
+const RATE_LIMITS = {
+  per_user: {
+    ai_conversations_per_minute: 5,
+    signup_per_device_per_month: 2,
+    referrals_sent_per_day: 10,
+  },
+  per_ip: {
+    signups_per_hour: 5,
+    password_resets_per_hour: 3,
+    support_tickets_per_day: 5,
+  },
+  per_endpoint: {
+    sparks_consumption_realtime: 10,  // ops por minuto
+  },
+};
+```
 
-**Por IP:**
-- Throttling de signups (signup desde misma IP cada N minutos).
-- Throttling de password resets.
-- Throttling de support tickets.
-
-**Por endpoint:**
-- API de Sparks consumption con rate limit estricto.
-- Endpoints sensibles con captcha si se exceden umbrales.
+Con captcha si se exceden umbrales.
 
 ---
 
 ## 4. Detección activa
 
-### 4.1 Señales de fraude
-
-#### Para farming de Sparks
-
-**Patrones detectables:**
-- Múltiples cuentas con mismo device fingerprint.
-- Email patterns: `user1@x.com`, `user2@x.com`, `user3@x.com`.
-- Names patterns: usuarios con nombres random o muy similares.
-- Comportamiento: signup → trial → abandono inmediatamente después de gastar Sparks → otro signup.
-- Network IP analysis: signups masivos desde misma IP/range.
-
-**Score de sospecha:**
+### 4.1 Fraud scoring algorithm
 
 ```typescript
-function calculateFraudScore(user: User): number {
+function calculateFraudScore(user: User, signals: FraudSignals): number {
   let score = 0;
 
   // Device fingerprint matches
-  const matchingFingerprints = countMatchingFingerprints(user.fingerprint);
-  if (matchingFingerprints > 1) score += 30;
-  if (matchingFingerprints > 3) score += 50;
+  if (signals.matching_fingerprints > 1) score += 30;
+  if (signals.matching_fingerprints > 3) score += 50;
 
   // Email patterns
-  if (isSuspiciousEmail(user.email)) score += 20;
+  if (signals.email_pattern_suspicious) score += 20;
 
   // IP analysis
-  const ipSignups = countRecentSignupsFromIp(user.ip, 24); // last 24h
-  if (ipSignups > 3) score += 25;
-  if (ipSignups > 10) score += 50;
+  if (signals.ip_signups_24h > 3) score += 25;
+  if (signals.ip_signups_24h > 10) score += 50;
 
   // Behavioral
-  if (user.daysActive < 1 && user.sparksConsumed > 30) score += 15;
+  if (signals.fast_spend_pattern) score += 15;
+  if (signals.signup_to_first_spend_seconds < 60) score += 20;
 
-  // Velocity
-  if (user.signupToFirstSpend < 60) score += 20; // segundos
+  // Referrals
+  if (signals.self_referral_likely) score += 30;
+
+  // Audio anomalies
+  if (signals.audio_never_human) score += 40;
+
+  // Payment patterns
+  if (signals.previous_chargebacks > 0) score += 50;
 
   return Math.min(score, 100);
 }
 ```
 
-**Thresholds:**
-- 0-30: usuario normal, sin acción.
-- 31-60: monitoreo cercano, posiblemente friction adicional.
-- 61-80: restricciones automáticas (no poder consumir Sparks gratis).
-- 81-100: cuenta bloqueada hasta verificación.
+### 4.2 Señales por categoría
+
+#### Para farming de Sparks
+
+| Signal | Descripción | Peso |
+|--------|-------------|-----:|
+| `matching_fingerprints_2_4` | Device fingerprint matches 2-4 cuentas | 30 |
+| `matching_fingerprints_5plus` | 5+ cuentas | 80 |
+| `email_pattern_sequential` | `user1@x.com, user2@x.com, user3@x.com` | 20 |
+| `email_pattern_random` | Random strings sin estructura humana | 15 |
+| `ip_signups_3_10_24h` | 3-10 signups desde misma IP/24 en 24h | 25 |
+| `ip_signups_10plus_24h` | 10+ signups | 50 |
+| `fast_spend` | Gasta todos los Sparks en < 1 día | 15 |
+| `signup_to_spend_under_60s` | Spend en < 60s post-signup | 20 |
+| `velocity_signup_to_first_attempt_under_5s` | Demasiado rápido para humano | 30 |
 
 #### Para account sharing
 
-**Patrones:**
-- Logins simultáneos desde IPs/regions muy distintas en poco tiempo.
-- Cambio frecuente de device fingerprints.
-- Patrones de uso inconsistentes (matutino + nocturno + tarde, sugiere
-  varias personas).
-
-**Acción:**
-- Detección suave: notificar al usuario "detectamos múltiples sesiones,
-  ¿es esto vos?".
-- Si patrón persiste y es claro: limitar a 1 sesión activa.
+| Signal | Peso |
+|--------|-----:|
+| `simultaneous_sessions_far_regions` | Sesiones simultáneas desde regiones imposibles | 30 |
+| `frequent_fingerprint_changes` | Device fingerprint cambia > 3 veces/semana | 20 |
+| `inconsistent_skill_patterns` | B1 errores en sesión vs C1 en otra | 25 |
+| `nonhuman_24h_pattern` | Actividad continua 24h sin descanso | 30 |
 
 #### Para self-referrals
 
-**Patrones:**
-- Referente y referido con mismo device fingerprint.
-- Referido se registra inmediatamente después de generación de código.
-- Email y teléfono del referido nunca verificados.
-- Referido nunca activa más allá del signup.
+| Signal | Peso |
+|--------|-----:|
+| `referrer_referee_same_fingerprint` | Mismo device | 40 |
+| `referee_signup_within_5min_of_code` | Signup inmediato post-generación | 20 |
+| `referee_never_verifies_email` | Email/phone nunca verificados | 15 |
+| `referee_never_completes_onboarding` | No actividad post-signup | 25 |
 
-**Acción:**
-- No otorgar bonus de referral si pattern es claro.
-- Investigar manualmente si volumen es alto.
+#### Para chargebacks pre-payment
 
-#### Para chargebacks
+| Signal | Peso |
+|--------|-----:|
+| `country_high_chargeback_rate` | País con alta tasa | 10 |
+| `card_never_used_with_us` | Tarjeta nueva | 5 |
+| `same_card_previous_chargebacks` | Tarjeta con CB previos | 50 |
 
-**Pre-payment signals:**
-- País con alta tasa de chargebacks (varía mes a mes).
-- Tarjeta nunca usada antes en nuestro sistema.
-- Mismo método de pago en cuentas previas con chargebacks.
+#### Para bots
 
-**Post-payment signals:**
-- Uso intensivo seguido de inactividad.
-- Cancelación seguida de chargeback dispute.
-- Multiple disputes en historial.
+| Signal | Peso |
+|--------|-----:|
+| `temporal_pattern_exact_intervals` | Cada 5 min exactamente | 30 |
+| `repetitive_responses` | Mismas respuestas en ejercicios distintos | 25 |
+| `audio_never_human_voice` | TTS sintético detectable | 40 |
+| `response_speed_under_100ms` | Inhumano | 35 |
 
-**Acción:**
-- Para signals altos: requerir 3DS authentication.
-- Para chargebacks repetidos: ban permanente.
+### 4.3 Thresholds de score → severity
 
-### 4.2 Detección con ML (post-MVP)
+| Score | Severity | Acción |
+|------:|----------|--------|
+| 0–30 | `low` | Sin acción, usuario normal |
+| 31–60 | `medium` | Monitoreo cercano, posible friction adicional |
+| 61–80 | `high` | Restricciones automáticas (no Sparks gratis, no leagues, no referrals) |
+| 81–100 | `critical` | Cuenta bloqueada hasta verificación humana |
 
-Una vez con suficiente data, modelo ML que:
-- Toma todas las señales como features.
-- Predice probabilidad de fraude.
-- Mejor que reglas hardcoded en patrones complejos.
+### 4.4 ML model (post-MVP)
 
-Implementación: random forest o XGBoost simple. No necesita ser sofisticado
-para empezar.
+Una vez con suficiente data:
+
+- Random forest o XGBoost simple.
+- Features: todas las signals.
+- Target: probabilidad de fraude.
+- Entrenamiento con casos confirmados (banned + appealed-rejected).
+
+NO necesita ser sofisticado para empezar. Reglas explícitas son más
+auditables.
 
 ---
 
-## 5. Respuestas al fraude
+## 5. Niveles de respuesta
 
-### 5.1 Niveles de respuesta
+### 5.1 Estructura de niveles
 
 ```
 Nivel 1: Soft warning
@@ -311,11 +359,11 @@ Nivel 3: Restricciones funcionales
     No participa en leagues.
     No puede referir.
 
-Nivel 4: Suspensión temporal
+Nivel 4: Suspensión temporal (REQUIERE REVISIÓN HUMANA)
 └── Cuenta pausada por 7-30 días.
     Email de aviso con opción de apelar.
 
-Nivel 5: Ban permanente
+Nivel 5: Ban permanente (REQUIERE REVISIÓN HUMANA)
 └── Cuenta cerrada.
     Device fingerprint bloqueado.
     Email blocklisted.
@@ -323,29 +371,54 @@ Nivel 5: Ban permanente
 
 ### 5.2 Decisión automática vs manual
 
-**Automatización segura:**
-- Niveles 1-3 pueden ser automáticos con buen tuning.
-- Reduce overhead operacional.
+**Niveles 1-3:** automáticos con buen tuning. Reduce overhead.
 
-**Requiere revisión manual:**
-- Nivel 4 (suspensión): humano revisa antes de aplicar.
-- Nivel 5 (ban): humano siempre, evitar falsos positivos costosos.
+**Niveles 4-5:** humano siempre. Evita falsos positivos costosos.
 
-### 5.3 Apelaciones
+### 5.3 Mapeo restriction_type → restricciones funcionales
 
-Sistema de apelación para usuarios que creen ser legítimos:
+```typescript
+const RESTRICTION_BEHAVIOR = {
+  no_referrals: {
+    can_send_referral_codes: false,
+    can_earn_referral_rewards: false,
+  },
+  no_leagues: {
+    can_join_leagues: false,
+    can_earn_league_rewards: false,
+  },
+  no_premium_features: {
+    can_use_conversations: false,         // bloquea task 'conversation_turn'
+    can_use_personalized_roleplays: false,
+  },
+  no_trial_sparks: {
+    receives_initial_50_sparks: false,
+    receives_referee_bonus: false,
+  },
+  suspended: {
+    can_login: true,                      // permite login para apelar
+    can_use_features: false,
+  },
+  banned: {
+    can_login: false,                     // hard block
+  },
+};
+```
+
+### 5.4 Apelaciones
 
 ```
-Cuenta restringida → Email al usuario explicando razón →
-Link a formulario de apelación → Revisión manual en 48h →
-Decisión: revertir o mantener
+Cuenta restringida → Email con razón + link de apelación →
+Form de apelación → Revisión humana en 48h → Decisión: revertir o
+mantener
 ```
 
-Importante: ser justo. Falsos positivos pierden customers legítimos.
+**Importante:** ser justo. Falsos positivos pierden customers
+legítimos.
 
 ---
 
-## 6. Casos específicos detallados
+## 6. Casos específicos
 
 ### 6.1 Multiple accounts del mismo usuario
 
@@ -353,53 +426,50 @@ Importante: ser justo. Falsos positivos pierden customers legítimos.
 
 Combinación de signals:
 - Device fingerprint match.
-- Pattern de email (mismo prefix con números diferentes).
+- Pattern de email (mismo prefix con números).
 - IP cercana o idéntica.
 - Tiempo entre signups corto.
 
 #### Respuesta
 
-**Caso 1: Confirmado fraude (matches fuertes en múltiples signals):**
-- Cuenta nueva: marcada como duplicate.
-- Sparks gratuitos del trial: no otorgados.
-- Usuario notificado: "Ya tenés cuenta con nosotros. Iniciá sesión con
-  X email."
+**Caso 1: Confirmado (matches fuertes en múltiples signals):**
+- Cuenta nueva: `restriction_applied = no_trial_sparks`.
+- Usuario notificado: "Ya tenés cuenta con nosotros. Iniciá sesión
+  con X email."
 
 **Caso 2: Posible duplicado (matches débiles):**
 - No bloquear.
-- Marcar para monitoreo.
+- Marcar para monitoreo (`fraud_score = medium`).
 - Si comportamiento confirma, escalar.
 
-#### Caso edge: usuarios legítimos
+#### Casos legítimos (edge)
 
-Algunos casos legítimos:
 - Familia compartiendo device.
-- Usuario que olvidó password y crea nueva cuenta.
+- User que olvidó password y crea cuenta nueva.
 
-Política:
-- 2 cuentas por device permitidas (dudas razonables).
-- 3+ cuentas: investigación.
+**Política:** 2 cuentas/device permitidas (dudas razonables). 3+:
+investigación.
 
 ### 6.2 Account sharing
 
 #### Por qué es problema
 
-- Reduce conversion (1 cuenta para 5 personas en lugar de 5 cuentas).
-- Inconsistencia en métricas (¿quién es realmente el usuario?).
-- Conflictos: progreso confuso si varias personas usan misma cuenta.
+- Reduce conversion (1 cuenta para N personas).
+- Inconsistencia métricas.
+- Conflictos de progreso.
 
 #### Detección
 
-- Sesiones simultáneas (probablemente OK, pero...).
-- Sesiones desde regiones imposibles de cubrir (México y Tokio en 2 horas).
+- Sesiones simultáneas desde regiones imposibles.
+- Cambios frecuentes de device fingerprint.
 - Patrones de aprendizaje contradictorios (B1 errores en una sesión, C1
   en otra).
 
 #### Respuesta
 
 **Soft enforcement (preferido):**
-- Limitar a 1 sesión activa simultánea.
-- Auto-logout si se detecta nueva sesión.
+- Limitar a 1 sesión activa simultánea (Firebase soporta).
+- Auto-logout si se detecta nueva.
 - Mensaje: "Tu cuenta es para uso individual. Familia y amigos pueden
   registrarse con su propia cuenta gratis."
 
@@ -408,39 +478,35 @@ Política:
 
 ### 6.3 Self-referrals masivos
 
-#### Detección
-
 User A se refiere a sí mismo via:
 - Cuenta secundaria con mismo device.
 - Cuenta de familiar con mismo device.
 - Bot creando cuentas falsas que él controla.
 
-#### Respuesta
+#### Anti-abuse rules
 
-**Anti-abuse rules:**
-- Recompensa de referral solo si referido completa onboarding.
-- Recompensa adicional solo si referido paga primer mes.
-- Cap de Sparks ganados por referrals: 100/mes para nuevos usuarios.
+- Recompensa de referral SOLO si referido completa onboarding.
+- Recompensa adicional SOLO si referido paga primer mes.
+- Cap de Sparks por referrals: 100/mes para nuevos usuarios.
 
-**Detección automática:**
-- Si referente y referido tienen mismo fingerprint: no otorgar.
-- Si referido nunca paga después de varios meses: clawback de bonus.
+#### Detección automática
+
+- Si referrer y referee tienen mismo fingerprint: no otorgar bonus.
+- Si referee nunca paga después de meses: clawback de bonus.
 
 ### 6.4 Bots de actividad
 
-Bots que automatizan actividad para ganar logros y Sparks.
-
 #### Detección
 
-- Patrones temporales no humanos (siempre exactamente cada 5 minutos).
-- Respuestas repetitivas (mismas respuestas en ejercicios diferentes).
-- Velocidad inhumana (responder en 100ms).
-- Audio sintético detectable (TTS, no humano).
+- Patrones temporales no humanos (cada 5 min exactamente).
+- Respuestas repetitivas.
+- Velocidad inhumana (< 100ms).
+- Audio sintético detectable.
 
 #### Respuesta
 
-- Captcha si se detecta patrón.
-- Análisis de audio: si nunca es voz humana, flagging.
+- Captcha si patrón.
+- Análisis de audio: si nunca es voz humana, flag.
 - Revisión manual.
 
 ### 6.5 Chargebacks fraudulentos
@@ -448,13 +514,13 @@ Bots que automatizan actividad para ganar logros y Sparks.
 #### Prevención
 
 - 3DS authentication para tarjetas nuevas.
-- Detección de signals de fraude pre-payment.
+- Detección de signals pre-payment.
 - Email de bienvenida con disclaimer claro de qué incluye el plan.
 
 #### Detección
 
-- Chargeback dispute notification de Stripe/RevenueCat.
-- Análisis del comportamiento previo al chargeback.
+- Notificación de chargeback dispute de Stripe/RevenueCat.
+- Análisis del comportamiento previo.
 
 #### Respuesta
 
@@ -465,42 +531,67 @@ Bots que automatizan actividad para ganar logros y Sparks.
 **Disputa fraudulenta:**
 - Aportar evidencia a Stripe (logs de uso, screenshots).
 - Si se pierde la disputa: ban del usuario.
-- Dispute fees absorbidos como costo de hacer business.
+- Dispute fees absorbidos como costo.
 
 ---
 
-## 7. Schema en Postgres
+## 7. Schemas Postgres
+
+### 7.1 Device fingerprints
 
 ```sql
--- Fingerprints de devices
 CREATE TABLE device_fingerprints (
   fingerprint     TEXT PRIMARY KEY,
   first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  user_count      INT DEFAULT 1,
-  flagged         BOOLEAN DEFAULT false,
-  flag_reason     TEXT
+  user_count      INT NOT NULL DEFAULT 1,
+  flagged         BOOLEAN NOT NULL DEFAULT false,
+  flag_reason     TEXT,
+  blocklisted     BOOLEAN NOT NULL DEFAULT false,
+  blocklist_reason TEXT
 );
 
--- Asociación usuarios-fingerprints
+CREATE INDEX idx_fingerprints_flagged ON device_fingerprints(flagged) WHERE flagged = true;
+CREATE INDEX idx_fingerprints_blocklisted ON device_fingerprints(blocklisted) WHERE blocklisted = true;
+```
+
+### 7.2 Asociación user-fingerprint
+
+```sql
 CREATE TABLE user_devices (
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   fingerprint     TEXT NOT NULL REFERENCES device_fingerprints(fingerprint),
-  first_seen_at   TIMESTAMPTZ DEFAULT now(),
+  first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, fingerprint)
 );
 
--- Score de fraude por usuario
+CREATE INDEX idx_user_devices_fingerprint ON user_devices(fingerprint);
+```
+
+### 7.3 Fraud scores
+
+```sql
 CREATE TABLE user_fraud_scores (
   user_id         UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   current_score   INT NOT NULL DEFAULT 0 CHECK (current_score BETWEEN 0 AND 100),
-  signals         JSONB DEFAULT '[]',
-  last_calculated TIMESTAMPTZ DEFAULT now(),
-  manual_override BOOLEAN DEFAULT false,
-  override_reason TEXT
+  severity        TEXT NOT NULL DEFAULT 'low'
+                  CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  signals         JSONB NOT NULL DEFAULT '[]',
+  last_calculated TIMESTAMPTZ NOT NULL DEFAULT now(),
+  manual_override BOOLEAN NOT NULL DEFAULT false,
+  override_reason TEXT,
+  override_by     TEXT,                          -- admin id
+  override_at     TIMESTAMPTZ
 );
 
--- Eventos de fraude detectados
+CREATE INDEX idx_fraud_scores_severity ON user_fraud_scores(severity)
+  WHERE severity IN ('high', 'critical');
+```
+
+### 7.4 Fraud events
+
+```sql
 CREATE TABLE fraud_events (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID REFERENCES users(id),
@@ -508,156 +599,342 @@ CREATE TABLE fraud_events (
   severity        TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
   signals         JSONB NOT NULL,
   action_taken    TEXT,
-  detected_at     TIMESTAMPTZ DEFAULT now(),
+  detected_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   reviewed_by     TEXT,
   reviewed_at     TIMESTAMPTZ,
   resolution      TEXT
 );
 
--- Restricciones aplicadas
+CREATE INDEX idx_fraud_events_user_date ON fraud_events(user_id, detected_at DESC);
+CREATE INDEX idx_fraud_events_unreviewed
+  ON fraud_events(detected_at DESC)
+  WHERE reviewed_at IS NULL AND severity IN ('high', 'critical');
+```
+
+### 7.5 User restrictions
+
+```sql
 CREATE TABLE user_restrictions (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   restriction_type TEXT NOT NULL CHECK (restriction_type IN (
-    'no_referrals', 'no_leagues', 'no_premium_features',
-    'suspended', 'banned'
-  )),
+                    'no_referrals',
+                    'no_leagues',
+                    'no_premium_features',
+                    'no_trial_sparks',
+                    'suspended',
+                    'banned'
+                  )),
   reason          TEXT NOT NULL,
-  starts_at       TIMESTAMPTZ DEFAULT now(),
-  ends_at         TIMESTAMPTZ,
-  applied_by      TEXT,
-  appealed        BOOLEAN DEFAULT false,
-  appeal_outcome  TEXT
+  starts_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ends_at         TIMESTAMPTZ,                   -- NULL = permanente
+  applied_by      TEXT NOT NULL DEFAULT 'system',
+  appealed        BOOLEAN NOT NULL DEFAULT false,
+  appeal_outcome  TEXT,                           -- 'approved' | 'denied' | NULL
+  lifted_at       TIMESTAMPTZ,
+  lifted_by       TEXT,
+  lifted_reason   TEXT
 );
 
--- Apelaciones
+CREATE INDEX idx_restrictions_user_active ON user_restrictions(user_id)
+  WHERE lifted_at IS NULL AND (ends_at IS NULL OR ends_at > now());
+CREATE INDEX idx_restrictions_active_type ON user_restrictions(restriction_type)
+  WHERE lifted_at IS NULL AND (ends_at IS NULL OR ends_at > now());
+```
+
+### 7.6 Fraud appeals
+
+```sql
 CREATE TABLE fraud_appeals (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID NOT NULL REFERENCES users(id),
   restriction_id  UUID REFERENCES user_restrictions(id),
   appeal_text     TEXT NOT NULL,
-  submitted_at    TIMESTAMPTZ DEFAULT now(),
+  submitted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   status          TEXT NOT NULL DEFAULT 'pending'
                   CHECK (status IN ('pending', 'reviewing', 'approved', 'denied')),
   reviewed_by     TEXT,
   reviewed_at     TIMESTAMPTZ,
   decision_notes  TEXT
 );
+
+CREATE INDEX idx_appeals_pending ON fraud_appeals(submitted_at DESC)
+  WHERE status = 'pending';
+```
+
+### 7.7 Disposable email blocklist
+
+```sql
+CREATE TABLE disposable_email_domains (
+  domain          TEXT PRIMARY KEY,
+  added_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  source          TEXT
+);
+-- Seed con lista open source de domains de email temporal
 ```
 
 ---
 
-## 8. Métricas de salud del sistema anti-fraude
+## 8. API contracts
 
-### 8.1 Volume metrics
+### 8.1 `evaluateFraudOnSignup`
 
-- Tasa de cuentas flaggeadas (% del total de signups).
-- Distribución de fraud scores (debería ser piramidal: muchos bajo, pocos alto).
-- Acciones automáticas tomadas por nivel.
+**Llamado por:** auth-system al `user.signed_up`.
 
-### 8.2 Calidad
+**Request:**
 
-- **False positive rate:** % de cuentas restringidas que son legítimas.
-  Target: < 5%.
-- **False negative rate:** % de fraude no detectado (medido cuando se
-  descubre tarde). Target: < 10%.
-- **Time to detection:** tiempo desde fraude hasta detección. Target: < 24h.
+```typescript
+interface EvaluateFraudOnSignupRequest {
+  user_id: string;
+  device_info: DeviceInfo;
+  ip: string;
+  email: string;
+  provider: string;
+}
+```
 
-### 8.3 Apelaciones
+**Response:**
 
-- Volumen de apelaciones.
-- % de apelaciones aprobadas (alto sugiere falsos positivos).
-- Tiempo promedio de resolución.
+```typescript
+interface EvaluateFraudOnSignupResponse {
+  score: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  signals: string[];
+  restrictions_applied: string[];
+}
+```
 
-### 8.4 Pérdidas
+### 8.2 `evaluateFraudOngoing`
 
-- $ perdidos por chargebacks.
-- $ perdidos por farming de Sparks.
-- $ perdidos por account sharing (estimado).
-- $ ahorrados por sistema (estimado).
+**Llamado por:** cron diario o triggers específicos.
 
-ROI del sistema: ($ ahorrados - $ pérdidas - $ costos del sistema) / $ inversión.
+```typescript
+interface EvaluateFraudOngoingRequest {
+  user_id: string;
+  trigger_event?: string;
+}
+```
+
+### 8.3 `applyRestriction`
+
+**Request:**
+
+```typescript
+interface ApplyRestrictionRequest {
+  user_id: string;
+  restriction_type: RestrictionType;
+  reason: string;
+  duration_days?: number;        // null = permanente
+  applied_by: 'system' | `admin:${string}`;
+}
+```
+
+**Reglas:**
+- Niveles 4-5 (`suspended`, `banned`) requieren `applied_by` admin
+  no `system`.
+- Emite evento `restriction.applied`.
+
+### 8.4 `liftRestriction`
+
+```typescript
+interface LiftRestrictionRequest {
+  restriction_id: string;
+  lifted_by: 'system' | `admin:${string}` | 'appeal_approved';
+  reason: string;
+}
+```
+
+### 8.5 `submitAppeal`
+
+```typescript
+interface SubmitAppealRequest {
+  restriction_id: string;
+  appeal_text: string;
+}
+
+interface SubmitAppealResponse {
+  appeal_id: string;
+  estimated_review_time_hours: number;  // 48
+}
+```
+
+### 8.6 `getActiveRestrictions`
+
+**Llamado por:** Sparks system, otros sistemas que necesitan saber si
+user tiene restricción activa.
+
+```typescript
+interface GetActiveRestrictionsRequest {
+  user_id: string;
+}
+
+interface GetActiveRestrictionsResponse {
+  restrictions: Array<{
+    id: string;
+    type: RestrictionType;
+    starts_at: string;
+    ends_at: string | null;
+    reason: string;
+  }>;
+}
+```
+
+Crítico: cacheable por 60s. Otros sistemas leen este endpoint
+frecuentemente.
+
+### 8.7 `reviewAppeal` (admin only)
+
+```typescript
+interface ReviewAppealRequest {
+  appeal_id: string;
+  decision: 'approved' | 'denied';
+  decision_notes: string;
+  reviewed_by: string;            // admin id
+}
+```
+
+**Reglas:**
+- Si `approved`: lift de la restriction asociada.
+- Emite eventos correspondientes.
 
 ---
 
-## 9. Plan de implementación
+## 9. Eventos emitidos
 
-### 9.1 Fase 1: Foundations (meses 0-3)
+(Detalle en `cross-cutting/data-and-events.md` §5.9.)
 
-**Crítico:**
-- Schema de fraud detection en Postgres.
-- Device fingerprinting básico.
-- Rate limiting en endpoints sensibles.
-- Email verification obligatoria para premium.
-- Trial cap de 50 Sparks (ya en sistema de Sparks).
-
-**Importante:**
-- Detección de duplicate accounts via fingerprint.
-- Logging de signals sospechosos.
-
-### 9.2 Fase 2: Detección activa (meses 3-9)
-
-**Crítico:**
-- Fraud scoring algorithm con reglas claras.
-- Restricciones automáticas Niveles 1-3.
-- Sistema de apelaciones.
-- Anti-self-referral logic.
-
-**Importante:**
-- Detección de account sharing.
-- Patrones de bot detection.
-
-### 9.3 Fase 3: Sofisticación (meses 9-18)
-
-**Crítico:**
-- ML model para fraud prediction.
-- Calibración basada en datos reales.
-- A/B testing de restricciones (lo que funciona vs no).
-
-**Importante:**
-- Detección de chargeback risk pre-payment.
-- Behavioral biometrics si se justifica.
-
-### 9.4 Fase 4: Escala (año 2+)
-
-- Equipo dedicado o partner especializado.
-- Integración con servicios externos (Sift, Stripe Radar).
-- Análisis forense de incidents grandes.
-- Threat intelligence sharing con otras apps.
+| Evento | Cuándo |
+|--------|--------|
+| `fraud.score_calculated` | Cada vez que se actualiza el score |
+| `restriction.applied` | Aplicación de cualquier restriction |
+| `restriction.lifted` | Lift por sistema, admin o apelación |
+| `fraud.appeal_submitted` | User envía apelación |
+| `fraud.appeal_reviewed` | Admin resuelve apelación |
+| `fraud.event_detected` | Nuevo fraud_event creado |
 
 ---
 
-## 10. Herramientas y servicios externos
+## 10. Edge cases (tests obligatorios)
 
-### 10.1 Para fraud prevention
+### 10.1 Score calculation
 
-**Stripe Radar:** built-in con Stripe, detecta payment fraud. Free.
+1. **Score llega a 100 con muchas signals:** clamp a 100, severity
+   `critical`, restricciones automáticas.
+2. **Score baja después de comportamiento normal sostenido (30 días):**
+   restricciones nivel 1-3 se liftean automáticamente; niveles 4-5
+   requieren manual.
 
-**Sift:** anti-fraud sofisticado pero caro. Considerar a escala.
+### 10.2 Restrictions
 
-**MaxMind:** IP geolocation y fraud signals. Pricing por API call.
+3. **User con `restriction = banned` intenta login:** Auth permite
+   token generation pero `applyRestriction.banned` → 403 en cualquier
+   feature.
+4. **User con `suspended` que expira mientras está logueado:** próximo
+   API call ve restriction expired, comportamiento normal.
+5. **Admin aplica `banned`, user apela y appeal aprobada:** lift +
+   evento; fraud_score se mantiene (no auto-reset).
 
-**Recaptcha:** Google, gratis, anti-bot.
+### 10.3 Fingerprinting
 
-### 10.2 Para email validation
+6. **Mismo device, 2 accounts:** OK, no flag.
+7. **Mismo device, 3 accounts en < 24h:** flag, fraud_score += 30.
+8. **Mismo device, 5+ accounts:** auto-restriction `no_trial_sparks`.
+9. **Fingerprint blocklisted:** próximo signup bloqueado en
+   `evaluateFraudOnSignup`.
 
-**ZeroBounce, NeverBounce:** verificación de emails reales.
+### 10.4 Self-referrals
 
-**Detección de disposable emails:** listas open source de domains de
-emails temporales.
+10. **Referrer y referee comparten device:** referral bonus NO
+    otorgado, pero ambos pueden seguir usando la app.
+11. **Referee abandona después de signup, sin pagar:** después de 60d,
+    clawback de bonus si fue otorgado prematuramente.
 
-### 10.3 Para device fingerprinting
+### 10.5 Apelaciones
 
-**FingerprintJS:** servicio managed, $200/mes para volúmenes medios.
+12. **User submite 3 apelaciones consecutivas para misma restricción:**
+    rate limit max 1/24h. Las extra se rechazan con mensaje.
+13. **Apelación aprobada para `banned`:** restriction lifted, account
+    accessible normalmente, fraud_score se evalúa de nuevo.
 
-**Self-hosted:** combinación de signals nativos del SDK móvil + custom logic.
-Más trabajo pero gratis.
+### 10.6 Compromised accounts
+
+14. **Login desde país X de un user que vive en país Y:** flag suave,
+    enviar email "fue tu login?".
+15. **Sesión simultánea geo-imposible (CDMX y Madrid en 2h):** force
+    logout de la más antigua, requiere re-auth.
+
+### 10.7 Concurrencia
+
+16. **Multiple fraud_score updates concurrentes para mismo user:**
+    `FOR UPDATE` lock, último wins; signals se mergean.
 
 ---
 
-## 11. Aspectos legales
+## 11. Observabilidad
 
-### 11.1 Privacidad y compliance
+### 11.1 Métricas críticas
+
+| Métrica | Definición | Target |
+|---------|-----------|--------|
+| Tasa de cuentas flaggeadas | % de signups con fraud_score >= medium | 5–10% (esperado) |
+| Distribución de fraud scores | Debería ser piramidal | bimodal extremo = bug |
+| **False positive rate** | % de cuentas restringidas que apelan y son aprobadas | < 5% |
+| **False negative rate** | % de fraude no detectado (cuando se descubre tarde) | < 10% |
+| Time to detection | Tiempo desde fraude hasta detección | < 24h |
+| Volumen de apelaciones | # por mes | Bajo y estable |
+| Tiempo promedio resolución apelación | | < 48h |
+| $ perdidos por chargebacks | mensual | < 1% del revenue |
+
+### 11.2 ROI del sistema
+
+```
+ROI = ($ ahorrados estimados - $ pérdidas - $ costos del sistema)
+      / $ inversión
+```
+
+A 50.000 users: ~$200/mes en infra + tiempo de revisión humana.
+
+### 11.3 Alertas
+
+- False positive rate > 10%: SEV-2 (sistema demasiado agresivo).
+- Spike en apelaciones (> 2x baseline): SEV-2.
+- Fraud event critical no revisado en 24h: SEV-2.
+- Spike en signups desde una IP/country: SEV-3.
+- Chargeback rate > 1% de revenue: SEV-2.
+
+---
+
+## 12. Decisiones cerradas
+
+### 12.1 Compartir signals con otras apps de la industria: **NO en MVP** ✓
+
+**Razón:** sin masa crítica para alianzas. Reconsiderar año 2.
+
+### 12.2 Pre-screening agresivo en países con altas tasas: **NO** ✓
+
+**Razón:** discriminación geográfica afecta a usuarios legítimos.
+Aplicar mismas reglas a todos.
+
+### 12.3 Soft launch de features anti-fraude (shadow mode): **SÍ** ✓
+
+**Razón:** observar 30 días en shadow antes de aplicar restrictions.
+Calibra falsos positivos sin afectar a usuarios.
+
+### 12.4 Identity verification (KYC light) para premium: **NO en MVP** ✓
+
+**Razón:** fricción muy alta para consumer. Reconsiderar si chargebacks
+suben significativamente.
+
+### 12.5 Programa "verified user": **NO en MVP** ✓
+
+**Razón:** sobre-ingeniería sin evidencia de necesidad. Considerar año 2
+si abuso de cuentas múltiples es problema persistente.
+
+---
+
+## 13. Aspectos legales
+
+### 13.1 Privacidad y compliance
 
 **Fingerprinting puede ser regulado:**
 - En EU (GDPR): puede requerir consent.
@@ -669,7 +946,9 @@ Más trabajo pero gratis.
 - Opt-out posible para usuarios que lo requieran (con limitaciones).
 - Datos no vendidos a terceros.
 
-### 11.2 Terms of Service
+(Ver `business/legal-compliance.md` §3.2 para detalle.)
+
+### 13.2 Terms of Service
 
 T&C debe incluir:
 - Cláusulas anti-abuse claras.
@@ -678,32 +957,83 @@ T&C debe incluir:
 - Política de chargebacks.
 - Definición de "uso aceptable".
 
-### 11.3 Comunicación al usuario
+### 13.3 Comunicación al usuario
 
 Cuando se aplica restricción:
 - Email/in-app notification clara.
-- Explicación general (no detallar todos los signals para no enseñar
+- Explicación general (NO detallar todos los signals para no enseñar
   cómo evadir).
 - Información de cómo apelar.
 - Proceso justo y honesto.
 
 ---
 
-## 12. Decisiones abiertas
+## 14. Plan de implementación
 
-- [ ] ¿Compartir signals de fraude con otras apps de la industria?
-  Alianzas anti-fraude.
-- [ ] ¿Pre-screening agresivo en países con altas tasas de fraude vs
-  experiencia neutral para todos?
-- [ ] ¿Soft launch de features anti-fraude (shadow mode antes de
-  enforcement)?
-- [ ] ¿Investigar identity verification para usuarios premium (KYC light)?
-- [ ] ¿Programa "verified user" con badge y privilegios para usuarios
-  comprobadamente legítimos a largo plazo?
+### 14.1 Fase 1: Foundations (meses 0–3)
+
+**Crítico:**
+- Schemas §7.
+- Device fingerprinting básico.
+- Rate limiting en endpoints sensibles.
+- Email verification obligatoria para premium.
+- Trial cap de 50 Sparks (sparks-system).
+
+**Importante:**
+- Detección de duplicate accounts vía fingerprint.
+- Logging de signals sospechosos.
+
+### 14.2 Fase 2: Detección activa (meses 3–9)
+
+**Crítico:**
+- Fraud scoring algorithm con reglas claras.
+- Restricciones automáticas niveles 1-3.
+- Sistema de apelaciones.
+- Anti-self-referral logic.
+
+**Importante:**
+- Detección de account sharing.
+- Patrones de bot detection.
+- Shadow mode 30 días antes de enforcement.
+
+### 14.3 Fase 3: Sofisticación (meses 9–18)
+
+- ML model para fraud prediction.
+- Calibración basada en datos reales.
+- A/B testing de restricciones.
+- Detección de chargeback risk pre-payment.
+
+### 14.4 Fase 4: Escala (año 2+)
+
+- Equipo dedicado o partner especializado (Sift).
+- Threat intelligence sharing.
+- Análisis forense de incidentes grandes.
 
 ---
 
-## 13. Riesgos del sistema mismo
+## 15. Herramientas externas
+
+### 15.1 Para fraud prevention
+
+- **Stripe Radar:** built-in con Stripe, payment fraud. Free.
+- **Sift:** sofisticado pero caro. Considerar a escala.
+- **MaxMind:** IP geolocation y fraud signals. Per API call.
+- **Recaptcha:** Google, gratis, anti-bot.
+
+### 15.2 Para email validation
+
+- **ZeroBounce / NeverBounce:** verificación email real.
+- Listas open source de disposable email domains.
+
+### 15.3 Para device fingerprinting
+
+- **FingerprintJS:** servicio managed, $200/mes.
+- Self-hosted: combinación de signals nativos del SDK móvil + custom.
+  Más trabajo pero gratis.
+
+---
+
+## 16. Riesgos del sistema mismo
 
 | Riesgo | Mitigación |
 |--------|-----------|
@@ -711,18 +1041,22 @@ Cuando se aplica restricción:
 | Sistema visible/molesto para legítimos | Friction proporcional, invisible cuando posible |
 | Backlash en redes sociales | Comunicación clara, fairness obvia |
 | Compliance issues | Legal review, documentation |
-| Sistema crackeable | Reglas en backend, no cliente |
+| Sistema crackeable | Reglas en backend, rotación de pesos |
 | Costo de mantenimiento | Automatización, foco en ROI |
 
 ---
 
-## 14. Referencias internas
+## 17. Referencias internas
 
-- `docs/architecture/sparks-system.md` — Trial limits y rate limits.
-- `docs/architecture/authentication-system.md` — Account validation.
-- `docs/product/customer-support-system.md` — Apelaciones y disputes.
-- `docs/architecture/notifications-system.md` — Notificación de
-  restricciones.
+| Documento | Relación |
+|-----------|----------|
+| [`sparks-system.md`](sparks-system.md) | Trial limits y rate limits; lee `user_restrictions`. |
+| [`authentication-system.md`](authentication-system.md) | Account validation. |
+| [`../business/customer-support-system.md`](../business/customer-support-system.md) | Apelaciones y disputes. |
+| [`notifications-system.md`](notifications-system.md) | Notificación de restricciones. |
+| [`../business/legal-compliance.md`](../business/legal-compliance.md) §5.3 | T&C de suspensión/ban. |
+| [`../cross-cutting/security-threat-model.md`](../cross-cutting/security-threat-model.md) §3.9 | Amenazas anti-fraud system. |
+| [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) §5.9 | Eventos `fraud.*`, `restriction.*`. |
 
 ---
 

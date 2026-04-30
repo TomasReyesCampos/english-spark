@@ -1,171 +1,239 @@
-# Notifications System (MVP)
+# Notifications System
 
-> Sistema de notificaciones para el MVP basado en Firebase Cloud Messaging.
-> Cubre push notifications a iOS y Android con orquestación desde
-> Cloudflare Workers. WhatsApp queda como opción futura post-validación.
+> Sistema de notificaciones del MVP basado en Firebase Cloud Messaging.
+> Push a iOS + Android orquestado desde Cloudflare Workers. Daily
+> reminders timezone-aware con contenido personalizado generado en
+> batch nocturno. WhatsApp/SMS post-MVP.
 
-**Estado:** Diseño v1.0
+**Estado:** Diseño v1.1 (profundizado para implementación)
 **Última actualización:** 2026-04
 **Owner:** —
-**Alcance:** MVP (meses 0-6)
+**Audiencia primaria:** agente AI implementador.
+**Alcance:** MVP (meses 0–6)
 
 ---
 
-## 1. Objetivo
+## 0. Cómo leer este documento
 
-Sostener la retención del producto durante el MVP mediante notificaciones
-push efectivas que mantengan al usuario practicando con consistencia.
-
-El aprendizaje de idiomas vive de la consistencia diaria. Sin notificaciones,
-los usuarios olvidan practicar y abandonan en pocos días. Con notificaciones
-bien diseñadas, se construye el hábito que el producto necesita para
-demostrar valor.
+- §1 establece **objetivo** y scope.
+- §2 cubre **boundaries**.
+- §3 lista **stack** y por qué FCM directo (no Expo Push).
+- §4 contiene el **catálogo** de notificaciones del MVP.
+- §5 cubre el **modelo de datos**.
+- §6 cubre el **flujo del cliente** (RN + Expo).
+- §7 cubre el **orquestador** (Cloudflare Workers + Cron Triggers).
+- §8 cubre **personalización con IA**.
+- §9 cubre **rate limiting**.
+- §10 contiene **API contracts**.
+- §11 enumera **edge cases**.
+- §12 cubre **eventos emitidos**.
+- §13 cubre **observabilidad**.
+- §14 cubre **roadmap post-MVP** (WhatsApp).
+- §15 cubre **decisiones cerradas**.
 
 ---
 
-## 2. Alcance del MVP
+## 1. Objetivo y scope
 
-### 2.1 Lo que incluye
+### 1.1 Objetivo
 
-- Push notifications nativas a iOS y Android via Firebase Cloud Messaging.
-- Recordatorios diarios personalizados por hora preferida del usuario.
+Sostener la retención del producto durante el MVP mediante push
+notifications efectivas que mantengan al usuario practicando con
+consistencia.
+
+El aprendizaje de idiomas vive de la **consistencia diaria**. Sin
+notificaciones, los usuarios olvidan practicar y abandonan en pocos
+días.
+
+### 1.2 Incluye en MVP
+
+- Push notifications nativas a iOS y Android via FCM.
+- Recordatorios diarios personalizados por hora preferida.
 - Notificaciones de eventos clave (logros, streaks, sistema).
-- Re-engagement de usuarios inactivos.
-- Preferencias granulares por tipo de notificación.
+- Re-engagement de usuarios inactivos (D3, D7, D14).
+- Preferencias granulares por tipo.
 - Personalización del contenido con IA en batch nocturno.
 
-### 2.2 Lo que NO incluye en MVP
+### 1.3 NO incluye en MVP
 
-- WhatsApp Business API (evaluado para post-MVP, sección 13).
-- Email transaccional masivo (uso mínimo, solo recibos via Stripe/RevenueCat).
+- WhatsApp Business API (post-validación, §14).
+- Email transaccional masivo (solo recibos via Stripe/RevenueCat).
 - SMS.
-- Notificaciones in-app sofisticadas (uso simple, mensaje básico al abrir).
-
-### 2.3 Por qué solo Firebase para MVP
-
-- **Simplicidad operativa:** un solo servicio para gestionar.
-- **Costo cero:** FCM es gratis e ilimitado.
-- **Cobertura completa:** push cubre el caso de uso primario (recordatorios
-  diarios) que es el más impactante para retención.
-- **Foco:** sin distracciones de plantillas WhatsApp, costos por mensaje,
-  o aprobaciones de Meta durante validación del producto.
+- In-app messaging avanzado.
 
 ---
 
-## 3. Stack tecnológico
+## 2. Boundaries
+
+### 2.1 Es responsable de
+
+- Recibir tokens FCM del cliente y persistirlos.
+- Calcular qué usuarios deben recibir qué notificación cada día.
+- Personalizar contenido (vía AI Gateway batch nocturno).
+- Enviar push via FCM.
+- Logging de delivery + opens.
+- Rate limiting por categoría.
+- Circuit breaker para usuarios que dejan de engagear.
+- Cleanup de tokens inválidos.
+
+### 2.2 NO es responsable de
+
+- **Decidir qué logros existen** (eso es `motivation-and-achievements`;
+  este sistema solo recibe `achievement.unlocked` y manda push).
+- **Validar restricciones por fraude** (lee `user_restrictions` de
+  `anti-fraud-system`).
+- **Generar prompts de IA dinámicamente** (usa Task Registry de
+  `ai-gateway-strategy`).
+- **Notificaciones in-app** mientras el user está en la app (eso lo
+  resuelve la UI).
+- **Email transaccional** (Stripe/RevenueCat envían recibos directo).
+
+### 2.3 Tensiones
+
+| Tensión | Resolución |
+|---------|-----------|
+| User practicó hoy → no enviar daily reminder | Query verifica `exercise_attempts` últimas 24h en TZ del user antes de enviar |
+| User tiene `restriction = banned` → no enviar push | Query lee `user_restrictions`; deniega envío |
+| Logro desbloqueado mid-session → ¿push o notificación in-app? | Si app está abierta: in-app via UI; si cerrada: push (decisión del cliente FE) |
+| Push falla por token inválido | Marcar token `is_active = false` y skip en próximo envío |
+
+---
+
+## 3. Stack
 
 ### 3.1 Componentes
 
 | Componente | Servicio | Rol |
 |-----------|----------|-----|
-| Push delivery | Firebase Cloud Messaging | Envío real a dispositivos iOS y Android |
-| SDK cliente | `@react-native-firebase/messaging` | Recepción y manejo de notificaciones en la app |
+| Push delivery | FCM HTTP v1 API | Envío real a iOS y Android |
+| SDK cliente | `@react-native-firebase/messaging` | Recepción y manejo en app |
 | Orquestación | Cloudflare Workers | Lógica de cuándo y a quién enviar |
-| Scheduling | Cloudflare Cron Triggers | Disparos programados (diarios, semanales) |
-| Estado de rate limits | Cloudflare KV o Durable Objects | Anti-spam por usuario |
+| Scheduling | Cloudflare Cron Triggers | Disparos programados |
+| Estado de rate limits | Cloudflare Durable Objects | Anti-spam por usuario |
 | Persistencia | Postgres (Supabase) | Tokens, preferencias, historial |
-| Personalización de contenido | AI Gateway (existente) | Generación batch nocturna |
+| Personalización | AI Gateway (existente) | Generación batch nocturna |
 
-### 3.2 Por qué FCM directo y no Expo Push Service
+### 3.2 Por qué FCM directo y no Expo Push
 
-Aunque la app se construye con Expo + React Native, se opta por FCM directo
-en lugar del wrapper de Expo Push Service por:
+(Ver ADR-004-notifications-fcm.)
 
-- **Control total:** acceso a todas las features de FCM (topics, conditions,
-  analytics, A/B testing).
-- **Sin intermediarios:** envío directo desde Cloudflare Workers a Google.
-- **Mejor analytics:** Firebase Analytics integra automáticamente métricas
-  de notificaciones.
-- **Topics y segmentación nativa:** FCM permite enviar a grupos sin
-  necesidad de iterar usuario por usuario.
-- **Compatible con futuro:** si más adelante se migra fuera de Expo, FCM
-  ya está configurado.
+- Control total sobre features de FCM.
+- Sin intermediarios.
+- Mejor analytics (Firebase Analytics integra automáticamente).
+- Topics y conditions nativos.
+- Costo cero (FCM gratis ilimitado).
 
-### 3.3 Configuración inicial necesaria
+### 3.3 Setup inicial necesario
 
-- Crear proyecto en Firebase Console.
-- Configurar app iOS: subir certificado APNs (.p8) a Firebase.
-- Configurar app Android: descargar `google-services.json`.
-- Instalar SDK en la app: `@react-native-firebase/app` y
-  `@react-native-firebase/messaging`.
-- En Expo: usar `expo-modules` con `react-native-firebase` (requiere
-  development build, no funciona con Expo Go).
-- Generar service account en Google Cloud Console para el Worker.
+- Proyecto Firebase con Cloud Messaging habilitado.
+- iOS: certificado APNs (.p8) subido a Firebase.
+- Android: `google-services.json` descargado.
+- SDK en app: `@react-native-firebase/app` +
+  `@react-native-firebase/messaging` (requiere Expo dev build).
+- Service account JSON en Cloudflare Secret (`FIREBASE_SERVICE_ACCOUNT`).
 
 ---
 
-## 4. Tipos de notificaciones del MVP
+## 4. Catálogo de notificaciones
 
-### 4.1 Catálogo
+### 4.1 Tabla canónica
 
-| ID | Tipo | Frecuencia | Trigger | Personalizada |
-|----|------|------------|---------|---------------|
-| `daily_reminder` | Recordatorio | 1/día a hora preferida | Cron | Sí |
-| `streak_at_risk` | Alerta | 1/día si aplica | Cron | Sí |
-| `level_completed` | Logro | Por evento | Domain event | No |
-| `welcome_d1` | Onboarding | 1 vez | 24h post-registro | No |
-| `welcome_d3` | Onboarding | 1 vez | 72h post-registro | Sí |
-| `inactivity_d3` | Re-engagement | 1 vez | 72h sin actividad | Sí |
-| `inactivity_d7` | Re-engagement | 1 vez | 7 días sin actividad | Sí |
-| `inactivity_d14` | Re-engagement | 1 vez | 14 días sin actividad | Sí |
-| `low_sparks` | Transactional | Por evento | Balance bajo | No |
-| `pack_expiring` | Transactional | Por evento | Pack expira en 7 días | No |
-| `payment_failed` | Transactional | Por evento | Pago rechazado | No |
+| `notification_id` | Categoría | Frecuencia | Trigger | Personalizada |
+|-------------------|-----------|-----------|---------|:-:|
+| `daily_reminder` | `reminder` | 1/día (hora preferida) | Cron horario | Sí |
+| `streak_at_risk` | `reminder` | 1/día si aplica | Cron horario | Sí |
+| `level_completed` | `achievement` | Por evento | Domain event | No |
+| `achievement_unlocked` | `achievement` | Por evento | Domain event | No |
+| `welcome_d1` | `onboarding` | 1 vez | 24h post-registro | No (template) |
+| `welcome_d3` | `onboarding` | 1 vez | 72h post-registro | Sí |
+| `welcome_d5` | `onboarding` | 1 vez | 5d post-registro | Sí (pre-assessment) |
+| `welcome_d7` | `onboarding` | 1 vez | 7d post-registro | Sí (assessment day) |
+| `inactivity_d3` | `reengagement` | 1 vez | 72h sin actividad | Sí |
+| `inactivity_d7` | `reengagement` | 1 vez | 7d sin actividad | Sí |
+| `inactivity_d14` | `reengagement` | 1 vez | 14d sin actividad | Sí |
+| `low_sparks` | `transactional` | Por evento | Balance < 20% del plan | No |
+| `pack_expiring` | `transactional` | Por evento | Pack expira en 7d | No |
+| `payment_failed` | `transactional` | Por evento | Pago rechazado | No |
+| `restriction_applied` | `transactional` | Por evento | Anti-fraud aplicó restricción | No |
 
-### 4.2 Daily reminder: el corazón del sistema
+### 4.2 Categorías y opt-out
 
-El daily reminder es la notificación más importante. Su efectividad
-determina la retención del producto.
+```typescript
+type NotificationCategory =
+  | 'reminder'        // user puede opt-out
+  | 'achievement'     // user puede opt-out
+  | 'onboarding'      // user puede opt-out (afecta retention)
+  | 'reengagement'    // user puede opt-out
+  | 'transactional';  // SIEMPRE se envía si push está habilitado globalmente
+```
 
-**Características:**
-- Se envía a la hora que el usuario suele practicar (configurable, default 7 PM).
-- Se envía en su zona horaria.
-- NO se envía si el usuario ya practicó hoy.
+Transactional **no** se puede desactivar individualmente sin desactivar
+push global del SO.
+
+### 4.3 Daily reminder (la más importante)
+
+#### Características
+
+- Hora preferida del usuario (default 19:00 hora local).
+- En su timezone (cron horario por timezone).
+- **NO se envía** si el usuario ya practicó hoy.
 - Contenido personalizado al foco pedagógico de hoy.
-- Menciona la racha actual si supera 3 días.
+- Menciona racha actual si > 3 días.
 
-**Ejemplos de contenido (generados por IA en batch nocturno):**
+#### Ejemplos de contenido
 
 ```
 Título: "Tu plan te espera, Juan"
-Cuerpo: "Hoy practicamos pronunciación de /θ/. Solo 12 minutos para mantener tu racha de 8 días."
+Cuerpo: "Hoy practicamos pronunciación de /θ/. 12 minutos para
+mantener tu racha de 8 días."
 ```
 
 ```
 Título: "12 minutos de inglés, María"
-Cuerpo: "Hoy: roleplay de entrevista técnica. Tu próxima entrevista se acerca."
+Cuerpo: "Hoy: roleplay de entrevista técnica. Tu próxima entrevista
+se acerca."
 ```
 
-### 4.3 Streak at risk
+Generados por `ai-gateway` task `generate_notification_content` en
+batch nocturno (§8).
 
-Si el usuario tiene una racha activa y faltan pocas horas para perderla
-(no practicó aún ese día), se envía una alerta.
+### 4.4 Streak at risk
 
-Reglas:
-- Solo si la racha actual es ≥ 5 días (sin urgencia para rachas cortas).
-- Se envía 4 horas antes del corte (medianoche en su tz).
-- Solo si el usuario tiene `reminders_enabled = true`.
-- Se envía como máximo 1 vez por día (no spam).
+#### Reglas
 
-### 4.4 Re-engagement (d3, d7, d14)
+- Solo si racha actual ≥ 5 días (sin urgencia para rachas cortas).
+- Se envía 4 horas antes del corte (medianoche en TZ del user).
+- Solo si user tiene `reminders_enabled = true`.
+- Max 1/día (rate limit).
 
-Tres niveles de re-engagement con tono y contenido distinto:
+#### Ejemplos
 
-- **D3:** suave, motivador. "Tu plan te está esperando."
-- **D7:** más personal, mostrar lo que se está perdiendo. "Mejorabas X. Volvé."
-- **D14:** último intento, posible incentivo (Sparks bonus por volver).
+```
+Título: "🔥 Tu racha de 23 días en juego"
+Cuerpo: "Quedan 4 horas. Solo necesitás 12 minutos."
+```
 
-Después del D14, no se envían más. Si el usuario no volvió, se considera
-churned y no tiene sentido seguir gastando notificaciones.
+### 4.5 Re-engagement (D3, D7, D14)
 
-### 4.5 Transaccionales
+Tres niveles con tono distinto:
 
-Notificaciones críticas que se envían independiente de preferencias de
-"engagement" (siempre que el usuario tenga push habilitado):
+| Día | Tono | Contenido |
+|-----|------|-----------|
+| D3 | Suave, motivador | "Tu plan te está esperando" |
+| D7 | Personal, mostrar progreso perdido | "Mejorabas X. Volvé." |
+| D14 | Último intento, posible incentivo | "Volvé y te regalamos 20 Sparks bonus" |
 
-- `low_sparks`: cuando balance < 20% del plan mensual.
-- `pack_expiring`: 7 días antes de expiración.
-- `payment_failed`: inmediato, con CTA para corregir método de pago.
+Después de D14: no se envían más. User churned.
+
+### 4.6 Transaccionales
+
+Notificaciones críticas que se envían independiente de
+"reminders_enabled" (siempre que push esté habilitado):
+
+- `low_sparks`: balance < 20% del plan mensual.
+- `pack_expiring`: 7 días antes de expirar.
+- `payment_failed`: inmediato, con CTA para corregir.
+- `restriction_applied`: anti-fraud aplicó restricción.
 
 ---
 
@@ -181,98 +249,104 @@ CREATE TABLE user_fcm_tokens (
   platform        TEXT NOT NULL CHECK (platform IN ('ios', 'android')),
   device_id       TEXT,
   app_version     TEXT,
-  created_at      TIMESTAMPTZ DEFAULT now(),
-  last_used_at    TIMESTAMPTZ DEFAULT now(),
-  is_active       BOOLEAN NOT NULL DEFAULT true
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  last_error      TEXT,
+  last_error_at   TIMESTAMPTZ
 );
 
-CREATE INDEX idx_fcm_tokens_user ON user_fcm_tokens(user_id) WHERE is_active = true;
+CREATE INDEX idx_fcm_tokens_user_active
+  ON user_fcm_tokens(user_id) WHERE is_active = true;
+CREATE INDEX idx_fcm_tokens_inactive_old
+  ON user_fcm_tokens(last_used_at) WHERE is_active = false;
 ```
 
-Notas:
-- Un usuario puede tener varios tokens (varios devices).
-- Los tokens se marcan inactivos cuando FCM devuelve error de invalid token.
-- Se limpian periódicamente (90 días sin uso).
-
-### 5.2 Preferencias del usuario
+### 5.2 Preferencias
 
 ```sql
 CREATE TABLE user_notification_preferences (
-  user_id           UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  user_id                 UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
 
-  -- Permiso global
-  push_enabled      BOOLEAN NOT NULL DEFAULT true,
+  push_enabled            BOOLEAN NOT NULL DEFAULT true,
 
-  -- Por categoría
   reminders_enabled       BOOLEAN NOT NULL DEFAULT true,
   achievements_enabled    BOOLEAN NOT NULL DEFAULT true,
+  onboarding_enabled      BOOLEAN NOT NULL DEFAULT true,
   reengagement_enabled    BOOLEAN NOT NULL DEFAULT true,
-  transactional_enabled   BOOLEAN NOT NULL DEFAULT true,
+  -- transactional siempre on cuando push_enabled
 
-  -- Hora preferida y timezone
-  preferred_reminder_hour INT NOT NULL DEFAULT 19,
+  preferred_reminder_hour INT NOT NULL DEFAULT 19 CHECK (preferred_reminder_hour BETWEEN 0 AND 23),
   timezone                TEXT NOT NULL DEFAULT 'America/Mexico_City',
 
-  updated_at              TIMESTAMPTZ DEFAULT now()
+  -- Circuit breaker
+  paused_until            TIMESTAMPTZ,             -- pause auto si user no engaga
+  pause_reason            TEXT,
+
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-Las transactional siempre son `true` por default y solo se deshabilitan
-si el usuario explícitamente lo pide. Avisos de pago fallido son críticos.
-
-### 5.3 Historial de notificaciones enviadas
+### 5.3 Historial enviadas
 
 ```sql
 CREATE TABLE notifications_log (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID NOT NULL REFERENCES users(id),
-  notification_id TEXT NOT NULL,        -- ej: 'daily_reminder'
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  notification_id TEXT NOT NULL,         -- ej: 'daily_reminder'
   category        TEXT NOT NULL,
   title           TEXT NOT NULL,
   body            TEXT NOT NULL,
-  data            JSONB DEFAULT '{}',
-  fcm_message_id  TEXT,                  -- response de FCM
-  sent_at         TIMESTAMPTZ DEFAULT now(),
+  data            JSONB NOT NULL DEFAULT '{}',
+  fcm_message_id  TEXT,                   -- response de FCM
+  sent_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   delivered_at    TIMESTAMPTZ,
   opened_at       TIMESTAMPTZ,
-  error           TEXT,                  -- si falló el envío
+  error           TEXT,
   CONSTRAINT valid_status CHECK (
     error IS NULL OR (delivered_at IS NULL AND opened_at IS NULL)
   )
 );
 
 CREATE INDEX idx_notif_log_user_date ON notifications_log(user_id, sent_at DESC);
-CREATE INDEX idx_notif_log_type ON notifications_log(notification_id, sent_at DESC);
+CREATE INDEX idx_notif_log_type_date ON notifications_log(notification_id, sent_at DESC);
+CREATE INDEX idx_notif_log_recent_opens
+  ON notifications_log(user_id, opened_at DESC)
+  WHERE opened_at IS NOT NULL;
 ```
 
-### 5.4 Contenido personalizado pre-generado
+Retention: 6 meses, después purge (cleanup cron).
+
+### 5.4 Contenido pre-generado
 
 ```sql
 CREATE TABLE notifications_scheduled (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID NOT NULL REFERENCES users(id),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   notification_id TEXT NOT NULL,
   scheduled_for   TIMESTAMPTZ NOT NULL,
   title           TEXT NOT NULL,
   body            TEXT NOT NULL,
-  data            JSONB DEFAULT '{}',
-  status          TEXT NOT NULL DEFAULT 'pending'
-                  CHECK (status IN ('pending', 'sent', 'cancelled', 'failed')),
-  generated_by    TEXT NOT NULL DEFAULT 'system'  -- 'ai' | 'system'
+  data            JSONB NOT NULL DEFAULT '{}',
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+                    'pending', 'sent', 'cancelled', 'failed'
+                  )),
+  generated_by    TEXT NOT NULL DEFAULT 'system',  -- 'ai' | 'system'
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_scheduled_pending ON notifications_scheduled(scheduled_for)
   WHERE status = 'pending';
 ```
 
-El job nocturno popula esta tabla con el contenido del día siguiente.
-Los Cron Triggers leen de aquí cuando es hora de enviar.
+El job nocturno popula con contenido del día siguiente. Cron cada 15
+min lee y envía.
 
 ---
 
-## 6. Flujo del cliente (React Native + Expo)
+## 6. Flujo del cliente
 
-### 6.1 Setup inicial
+### 6.1 Setup
 
 ```typescript
 // app/notifications/setup.ts
@@ -294,12 +368,12 @@ export async function setupNotifications() {
   // 2. Obtener token FCM
   const token = await messaging().getToken();
 
-  // 3. Registrar token en backend
+  // 3. Registrar en backend
   await api.post('/notifications/register-token', {
     token,
     platform: Platform.OS,
     device_id: await getDeviceId(),
-    app_version: Application.nativeApplicationVersion
+    app_version: Application.nativeApplicationVersion,
   });
 
   // 4. Listener para refresh de token
@@ -309,25 +383,22 @@ export async function setupNotifications() {
 }
 ```
 
-### 6.2 Manejo de notificaciones recibidas
+### 6.2 Recepción
 
 ```typescript
 // Notificación con app en background
 messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-  // FCM ya muestra la notificación automáticamente
-  // Aquí solo logging o pre-fetch de data
+  // FCM ya muestra automáticamente
   await trackNotificationReceived(remoteMessage);
 });
 
 // Notificación con app abierta
 messaging().onMessage(async (remoteMessage) => {
-  // Mostrar notificación in-app custom
   showInAppNotification(remoteMessage);
 });
 
-// Usuario abre la app desde una notificación
+// User abre app desde notificación
 messaging().onNotificationOpenedApp((remoteMessage) => {
-  // Navegar a la pantalla relevante según data
   if (remoteMessage.data?.deeplink) {
     navigate(remoteMessage.data.deeplink);
   }
@@ -337,39 +408,41 @@ messaging().onNotificationOpenedApp((remoteMessage) => {
 
 ### 6.3 UI de preferencias
 
-Pantalla de settings que permite:
-
-- Toggle global: push notifications on/off.
-- Toggles por categoría: reminders, achievements, reengagement.
-- Selector de hora preferida (slider o picker).
-- Indicación clara: las transaccionales siempre llegan.
-- Link a settings del sistema operativo si el permiso global está negado.
+Settings con:
+- Toggle global push on/off (links a Settings del SO si está
+  desactivado a nivel sistema).
+- Toggles por categoría (reminders, achievements, reengagement).
+- Selector hora preferida (slider 0-23).
+- Selector timezone (override del detectado).
+- Indicación: "Las transaccionales siempre llegan."
 
 ---
 
-## 7. Orquestador en Cloudflare Workers
+## 7. Orquestador Workers
 
-### 7.1 Estructura de archivos
+### 7.1 Estructura
 
 ```
-workers/notifications/
+apps/workers/notifications/
 ├── src/
-│   ├── index.ts                    # Worker principal con routes
+│   ├── index.ts
 │   ├── schedulers/
-│   │   ├── daily-reminders.ts      # Cron handler
-│   │   ├── streak-checker.ts       # Cron handler
-│   │   ├── inactivity-detector.ts  # Cron handler
-│   │   └── scheduled-dispatcher.ts # Lee notifications_scheduled
+│   │   ├── daily-reminders.ts
+│   │   ├── streak-checker.ts
+│   │   ├── inactivity-detector.ts
+│   │   ├── scheduled-dispatcher.ts
+│   │   └── cleanup.ts
 │   ├── senders/
-│   │   └── fcm-sender.ts           # Llama FCM API
+│   │   └── fcm-sender.ts
 │   ├── triggers/
-│   │   ├── on-level-complete.ts    # Domain event handler
+│   │   ├── on-level-complete.ts
+│   │   ├── on-achievement-unlocked.ts
 │   │   ├── on-payment-failed.ts
 │   │   └── on-low-sparks.ts
 │   ├── utils/
-│   │   ├── rate-limiter.ts         # Durable Object
+│   │   ├── rate-limiter.ts        (Durable Object)
 │   │   ├── timezone.ts
-│   │   └── fcm-auth.ts             # Generación de access tokens
+│   │   └── fcm-auth.ts
 │   └── types/
 └── wrangler.toml
 ```
@@ -384,11 +457,9 @@ compatibility_date = "2026-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "main"
-database_id = "..."
 
 [[kv_namespaces]]
 binding = "RATE_LIMITS"
-id = "..."
 
 [[durable_objects.bindings]]
 name = "USER_RATE_LIMITER"
@@ -396,76 +467,45 @@ class_name = "UserRateLimiter"
 
 [triggers]
 crons = [
-  "*/15 * * * *",       # Cada 15 min: dispatch de notifications_scheduled
-  "0 * * * *",          # Cada hora: chequeo de daily reminders por timezone
-  "0 20 * * *",         # 8 PM UTC: detección de streaks en peligro
-  "0 1 * * *",          # 1 AM UTC: detección de inactividad
-  "0 3 * * 0"           # Domingos 3 AM UTC: cleanup de tokens viejos
+  "*/15 * * * *",       # Cada 15 min: dispatch de scheduled
+  "0 * * * *",          # Cada hora: chequeo de daily reminders por TZ
+  "0 20 * * *",         # 20:00 UTC: detección de streaks en peligro
+  "0 1 * * *",          # 01:00 UTC: detección de inactividad
+  "0 2 * * *",          # 02:00 UTC: generar contenido del día siguiente
+  "0 3 * * 0",          # Domingos 03:00 UTC: cleanup tokens viejos + logs
 ]
 
 [vars]
 FIREBASE_PROJECT_ID = "your-project-id"
-
-# Secrets se setean con: wrangler secret put FIREBASE_SERVICE_ACCOUNT
 ```
 
-### 7.3 Handler principal de cron
-
-```typescript
-// src/index.ts
-export default {
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    const cronPattern = event.cron;
-
-    switch (cronPattern) {
-      case '*/15 * * * *':
-        await dispatchScheduledNotifications(env);
-        break;
-      case '0 * * * *':
-        await checkDailyReminders(env);
-        break;
-      case '0 20 * * *':
-        await detectStreaksAtRisk(env);
-        break;
-      case '0 1 * * *':
-        await detectInactivity(env);
-        break;
-      case '0 3 * * 0':
-        await cleanupOldTokens(env);
-        break;
-    }
-  },
-
-  async fetch(request: Request, env: Env): Promise<Response> {
-    // Endpoints HTTP para domain events (level_complete, etc.)
-    return await handleDomainEvent(request, env);
-  }
-};
-```
-
-### 7.4 Detección de daily reminders por timezone
+### 7.3 Detección de daily reminders por timezone
 
 ```typescript
 async function checkDailyReminders(env: Env) {
   const currentUtcHour = new Date().getUTCHours();
 
   // Query: usuarios cuya hora preferida coincide con UTC actual
-  // según su timezone, que no han practicado hoy
+  // según su TZ, que no han practicado hoy
   const users = await env.DB.prepare(`
     SELECT
-      u.id,
-      u.name,
-      np.preferred_reminder_hour,
-      np.timezone
+      u.id, u.display_name, np.preferred_reminder_hour, np.timezone
     FROM users u
     JOIN user_notification_preferences np ON np.user_id = u.id
     WHERE np.push_enabled = true
       AND np.reminders_enabled = true
+      AND (np.paused_until IS NULL OR np.paused_until < now())
       AND user_local_hour(?, np.timezone) = np.preferred_reminder_hour
       AND NOT EXISTS (
-        SELECT 1 FROM user_sessions s
-        WHERE s.user_id = u.id
-          AND s.started_at > date_trunc('day', now() AT TIME ZONE np.timezone)
+        SELECT 1 FROM exercise_attempts ea
+        WHERE ea.user_id = u.id
+          AND ea.completed_at > date_trunc('day', now() AT TIME ZONE np.timezone)
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM user_restrictions ur
+        WHERE ur.user_id = u.id
+          AND ur.restriction_type IN ('suspended', 'banned')
+          AND (ur.ends_at IS NULL OR ur.ends_at > now())
       )
   `).bind(currentUtcHour).all();
 
@@ -475,7 +515,7 @@ async function checkDailyReminders(env: Env) {
 }
 ```
 
-### 7.5 Envío via FCM HTTP v1 API
+### 7.4 Envío via FCM HTTP v1
 
 ```typescript
 // src/senders/fcm-sender.ts
@@ -483,53 +523,47 @@ import { generateGoogleAccessToken } from '../utils/fcm-auth';
 
 export async function sendFcmNotification(
   job: NotificationJob,
-  env: Env
+  env: Env,
 ): Promise<FcmResult> {
   const accessToken = await generateGoogleAccessToken(env);
 
   const fcmEndpoint =
     `https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`;
 
-  // Obtener tokens activos del usuario
   const tokens = await getActiveTokens(job.userId, env);
+  if (tokens.length === 0) return { delivered: 0, failed: 0 };
 
-  const results = await Promise.allSettled(tokens.map(token =>
+  const results = await Promise.allSettled(tokens.map((token) =>
     fetch(fcmEndpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         message: {
           token: token.token,
-          notification: {
-            title: job.title,
-            body: job.body
-          },
+          notification: { title: job.title, body: job.body },
           data: job.data,
           android: {
             priority: 'high',
             notification: {
               sound: 'default',
-              channel_id: job.category
-            }
+              channel_id: job.category,
+            },
           },
           apns: {
             payload: {
-              aps: {
-                sound: 'default',
-                badge: 1
-              }
-            }
-          }
-        }
-      })
+              aps: { sound: 'default', badge: 1 },
+            },
+          },
+        },
+      }),
     }).then(async (res) => ({
       token: token.token,
       success: res.ok,
-      response: await res.json()
-    }))
+      response: await res.json(),
+    })),
   ));
 
   // Manejar tokens inválidos
@@ -537,53 +571,48 @@ export async function sendFcmNotification(
     if (result.status === 'fulfilled' && !result.value.success) {
       const errorCode = result.value.response?.error?.details?.[0]?.errorCode;
       if (errorCode === 'UNREGISTERED' || errorCode === 'INVALID_ARGUMENT') {
-        await markTokenInactive(result.value.token, env);
+        await markTokenInactive(result.value.token, env, errorCode);
       }
     }
   }
 
-  // Logging
   await logNotification(job, results, env);
 
   return aggregateResults(results);
 }
 ```
 
-### 7.6 Generación del access token de Google
+### 7.5 Generación del access token
 
 FCM requiere OAuth 2.0 access tokens, no API keys. Se generan firmando
-un JWT con la service account.
+JWT con la service account.
 
 ```typescript
-// src/utils/fcm-auth.ts
 export async function generateGoogleAccessToken(env: Env): Promise<string> {
-  // Cache del token (válido 1h)
+  // Cache (token válido 1h, cachear 50 min)
   const cached = await env.RATE_LIMITS.get('fcm_access_token');
   if (cached) return cached;
 
   const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
 
-  // Crear JWT firmado
   const jwt = await createSignedJwt({
     iss: serviceAccount.client_email,
     scope: 'https://www.googleapis.com/auth/firebase.messaging',
     aud: 'https://oauth2.googleapis.com/token',
     iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600
+    exp: Math.floor(Date.now() / 1000) + 3600,
   }, serviceAccount.private_key);
 
-  // Intercambiar JWT por access token
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
   });
 
   const { access_token } = await response.json();
 
-  // Cachear por 50 min (margen de 10 min antes de expirar)
   await env.RATE_LIMITS.put('fcm_access_token', access_token, {
-    expirationTtl: 3000
+    expirationTtl: 3000, // 50 min
   });
 
   return access_token;
@@ -596,22 +625,23 @@ export async function generateGoogleAccessToken(env: Env): Promise<string> {
 
 ### 8.1 Generación batch nocturna
 
-El job nocturno (existente para análisis del usuario) genera el contenido
-personalizado de notificaciones del día siguiente.
-
-Flujo:
+Cron 02:00 UTC (cuando es ~20:00 en MX, antes de daily reminders del
+día siguiente):
 
 ```
-1. Job nocturno corre a las 2 AM en cada timezone relevante.
-2. Para cada usuario activo:
-   a. Recopila datos: nombre, racha, foco pedagógico de mañana, logros recientes.
-   b. Llama al AI Gateway con tarea 'generate_notifications'.
-   c. Recibe contenido para daily_reminder y streak_at_risk si aplica.
-   d. Persiste en notifications_scheduled con scheduled_for = mañana a hora preferida.
-3. El cron de cada hora dispatcha las notificaciones cuyo scheduled_for matchee.
+1. Para cada user activo (logueado en últimos 7 días):
+   a. Recopilar context: nombre, racha, foco pedagógico de mañana,
+      logro reciente.
+   b. Llamar AI Gateway task 'generate_notification_content'.
+   c. Recibir contenido para daily_reminder y streak_at_risk si aplica.
+   d. Persistir en notifications_scheduled con scheduled_for = mañana
+      hora preferida.
+2. Cron horario disparcha cuando scheduled_for matchea.
 ```
 
 ### 8.2 Prompt template
+
+(Ver `ai-gateway-strategy.md` §4.2.7 para Task Registry config.)
 
 ```
 Generá el contenido de notificaciones push para este usuario en español
@@ -626,7 +656,7 @@ DATOS:
 
 NOTIFICACIONES A GENERAR:
 
-1. daily_reminder (push, máximo 50 caracteres en título, 90 en cuerpo):
+1. daily_reminder (max 50 chars en título, 90 en cuerpo):
    - Personal y motivador
    - Mencionar racha si >= 3 días
    - Mencionar foco específico de mañana
@@ -644,9 +674,19 @@ DEVOLVÉ JSON:
 
 ### 8.3 Costo estimado
 
-Aproximadamente $0.0005 USD por usuario por día. A 10.000 usuarios activos,
-$5 USD/día = $150 USD/mes. Despreciable comparado con el impacto en
-retención.
+~$0.0005 USD por user/día. A 10.000 usuarios activos: ~$5/día = ~$150/mes.
+Despreciable comparado con impacto en retention.
+
+### 8.4 Fallback si AI falla
+
+Si la generación falla, usar templates genéricos:
+
+```typescript
+const FALLBACK_DAILY = {
+  title: 'Tu plan te espera',
+  body: 'Hoy: {{minutes}} min de práctica. ¿Vamos?',
+};
+```
 
 ---
 
@@ -654,12 +694,15 @@ retención.
 
 ### 9.1 Límites por usuario
 
-| Categoría | Max por día | Max por semana |
-|-----------|------------|----------------|
-| Reminders | 1 | 7 |
-| Achievements | 3 | 15 |
-| Reengagement | 1 | 3 |
-| Transactional | 5 | 20 |
+```typescript
+const RATE_LIMITS = {
+  reminder:       { per_day: 1,  per_week: 7 },
+  achievement:    { per_day: 3,  per_week: 15 },
+  onboarding:     { per_day: 1,  per_week: 4 },
+  reengagement:   { per_day: 1,  per_week: 3 },
+  transactional:  { per_day: 5,  per_week: 20 },
+};
+```
 
 ### 9.2 Implementación con Durable Objects
 
@@ -675,11 +718,11 @@ export class UserRateLimiter implements DurableObject {
     const todayKey = `${category}_${getTodayKey()}`;
     const weekKey = `${category}_${getWeekKey()}`;
 
-    const todayCount = (await this.state.storage.get<number>(todayKey)) || 0;
-    const weekCount = (await this.state.storage.get<number>(weekKey)) || 0;
+    const todayCount = (await this.state.storage.get<number>(todayKey)) ?? 0;
+    const weekCount = (await this.state.storage.get<number>(weekKey)) ?? 0;
 
     const limits = RATE_LIMITS[category];
-    if (todayCount >= limits.maxPerDay || weekCount >= limits.maxPerWeek) {
+    if (todayCount >= limits.per_day || weekCount >= limits.per_week) {
       return false;
     }
 
@@ -698,89 +741,323 @@ export class UserRateLimiter implements DurableObject {
 
 Si el usuario:
 - Toca "no me interesa" en una notificación.
-- Desactiva push en settings del sistema operativo.
+- Desactiva push en Settings del SO.
 - No abre la app durante 30+ días.
 
-Se aplica circuit breaker: pause de notificaciones por 7-30 días según
-caso. Esto previene seguir gastando recursos en usuarios que ya no quieren
-recibir o no van a volver.
+Se aplica circuit breaker:
+
+```typescript
+const CIRCUIT_BREAKER_RULES = [
+  { signal: 'user_dismissed_3_in_row',     pause_days: 7 },
+  { signal: 'open_rate_under_5pct_in_30d', pause_days: 14 },
+  { signal: 'inactive_30_days',            pause_days: 30 },
+];
+```
+
+`user_notification_preferences.paused_until` se setea; queries lo
+respetan.
 
 ---
 
-## 10. Observabilidad
+## 10. API contracts
 
-### 10.1 Métricas críticas
+### 10.1 `POST /notifications/register-token`
 
-- **Delivery rate:** % de notificaciones que FCM entrega vs intenta enviar.
-- **Open rate por tipo:** % de notificaciones que el usuario abre.
-- **Click-through rate:** % que generan apertura de la app.
-- **Conversion rate:** % que generan acción objetivo (práctica, compra).
-- **Opt-out rate por tipo:** % que desactivan después de recibir.
+**Request:**
 
-### 10.2 Targets esperados (benchmarks de la industria)
+```typescript
+interface RegisterTokenRequest {
+  token: string;
+  platform: 'ios' | 'android';
+  device_id?: string;
+  app_version?: string;
+}
+```
 
-| Tipo | Open rate target | CTR target |
-|------|------------------|------------|
-| Daily reminder | 8-15% | 5-10% |
-| Streak at risk | 15-25% | 12-20% |
-| Achievement | 20-30% | 15-25% |
-| Inactivity | 3-8% | 2-5% |
+**Response:** `200 OK` o `4xx`.
 
-### 10.3 Stack de observabilidad
+**Reglas:**
+- Verificar JWT.
+- Idempotente (mismo token re-registrado actualiza `last_used_at`).
+- Si token ya existe en otro user: invalidarlo en el viejo, asociar al
+  nuevo.
 
-- **Firebase Analytics:** integrado nativamente con FCM, métricas de delivery
-  y open automáticas.
-- **PostHog:** eventos custom de conversion (qué pasa después de abrir).
-- **Cloudflare Logs:** logs del Worker con costos y errores.
-- **Tabla notifications_log:** auditoría completa con joins a métricas de
-  producto.
+### 10.2 `POST /notifications/preferences`
 
-### 10.4 Alertas críticas
+**Request:**
 
-- Delivery rate < 90% (problema con FCM o tokens).
-- Open rate de daily_reminder cae > 30% vs baseline.
-- Spike en opt-outs.
-- Errores de envío > 5%.
+```typescript
+interface UpdatePreferencesRequest {
+  push_enabled?: boolean;
+  reminders_enabled?: boolean;
+  achievements_enabled?: boolean;
+  reengagement_enabled?: boolean;
+  preferred_reminder_hour?: number;
+  timezone?: string;
+}
+```
+
+**Response:** `200 OK` con preferencias actualizadas.
+
+### 10.3 `POST /notifications/track-opened`
+
+**Llamado por:** cliente cuando user abre app desde notificación.
+
+**Request:**
+
+```typescript
+interface TrackOpenedRequest {
+  notification_log_id: string;     // UUID del log entry
+  opened_at: string;               // ISO
+}
+```
+
+### 10.4 Internal: `dispatchNotification`
+
+**Llamado por:** triggers internos (no expuesto a cliente).
+
+```typescript
+async function dispatchNotification(input: {
+  user_id: string;
+  notification_id: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  bypass_rate_limit?: boolean;     // solo para SEV-1 transactionals
+}): Promise<DispatchResult>
+```
 
 ---
 
-## 11. Plan de implementación
+## 11. Edge cases (tests obligatorios)
 
-### 11.1 Sprint 1 (semana 1): Setup foundational
+### 11.1 Tokens
 
-- Crear proyecto Firebase y configurar iOS/Android.
-- Integrar SDK en la app (development build con react-native-firebase).
-- Endpoint en backend para registrar tokens.
-- Tabla `user_fcm_tokens` y `user_notification_preferences`.
+1. **Token registrado por user A llega al device de user B (compartido):**
+   detectar en re-register; invalidar para user A, asociar a user B.
+2. **Token retorna `UNREGISTERED` de FCM:** mark `is_active = false`,
+   `last_error = 'UNREGISTERED'`.
+3. **User logout y vuelve a logear con mismo device:** mismo token,
+   `last_used_at` se actualiza.
+4. **User cambia device:** nuevo token registrado, viejo eventualmente
+   marcado inactive cuando FCM lo rechace.
+
+### 11.2 Daily reminders
+
+5. **User practicó hace 1 minuto y ahora viene la hora del reminder:**
+   query `exercise_attempts > start_of_day_in_tz` filtra; no se envía.
+6. **User cambia TZ entre 18h y 19h:** edge: si nuevo TZ pone su hora
+   actual fuera de las 19h, no se envía hoy. Mañana sí.
+7. **User en TZ con DST cambio:** `Intl.DateTimeFormat` resuelve TZ
+   correctamente. Test con `'America/Santiago'` durante cambio.
+
+### 11.3 Streak at risk
+
+8. **User tiene streak 5 días, son las 22:00 en su TZ y no practicó:**
+   se envía `streak_at_risk` (4h antes de medianoche).
+9. **User practica entre que se schedulea y que se envía:** scheduler
+   debe re-verificar antes de enviar.
+
+### 11.4 Re-engagement
+
+10. **User vuelve a la app en día 5 y al irse pasa otra vez 7 días:**
+    `inactivity_d7` se schedulea de nuevo. Anti-loop: contar desde
+    último `notification.opened`, no desde signup.
+
+### 11.5 Rate limiting
+
+11. **3 logros desbloqueados en 1 sesión:** primer push de logro
+    immediato, los siguientes acumulan en notificación grupal o se
+    suprime hasta próximo evento (decisión: suprimir; user verá
+    todos los logros en la pantalla de logros).
+12. **Cap de 3/día de achievement alcanzado, llega 4to:** notificación
+    se descarta silenciosamente. Logro queda en `user_achievements`.
+
+### 11.6 Anti-fraud integration
+
+13. **User con `restriction = banned`:** notificaciones no se envían
+    (excepto `restriction_applied` y `payment_failed` críticos).
+14. **User con `restriction = suspended` temporal:** no se envía nada
+    hasta que termine.
+
+### 11.7 FCM failures
+
+15. **FCM 503 durante envío masivo:** retry con backoff exponencial.
+    Si falla 3 veces, marcar para retry posterior.
+16. **Service account JWT expira mid-flight:** regenerar, retry.
+17. **Project ID equivocado en config:** todos los envíos fallan;
+    alerta crítica.
+
+---
+
+## 12. Eventos emitidos
+
+(Detalle del shape en `cross-cutting/data-and-events.md` §5.6.)
+
+| Evento | Cuándo |
+|--------|--------|
+| `notification.scheduled` | Persistido en `notifications_scheduled` |
+| `notification.sent` | FCM aceptó la solicitud |
+| `notification.delivered` | FCM confirmó delivery |
+| `notification.opened` | User abrió la app desde la notif |
+| `notification.dismissed` | User dismisseó sin abrir |
+| `notification.preferences_changed` | User editó settings |
+
+---
+
+## 13. Observabilidad
+
+### 13.1 Métricas críticas
+
+| Métrica | Definición | Target |
+|---------|-----------|--------|
+| Delivery rate | % de FCM accepted vs intentos | > 95% |
+| Open rate `daily_reminder` | % opens vs delivered | 8–15% |
+| Open rate `streak_at_risk` | % opens vs delivered | 15–25% |
+| Open rate `achievement_unlocked` | % opens vs delivered | 20–30% |
+| Open rate `inactivity_d3` | % opens vs delivered | 3–8% |
+| Click-through rate | % que generan apertura de la app | 5–10% global |
+| Conversion rate | % que generan acción objetivo (práctica, compra) | Variable |
+| Opt-out rate por categoría | % que desactivan después de recibir | < 2%/mes |
+
+### 13.2 Stack
+
+- **Firebase Analytics:** integrado nativamente con FCM.
+- **PostHog:** eventos custom de conversion.
+- **Cloudflare Logs:** logs del Worker.
+- **`notifications_log`:** auditoría completa con joins a métricas.
+
+### 13.3 Alertas
+
+- Delivery rate < 90%: SEV-2.
+- Open rate `daily_reminder` cae > 30% vs baseline: SEV-2 (algo se
+  rompió o user fatigue).
+- Spike en opt-outs: SEV-2.
+- Errors de envío > 5%: SEV-2.
+
+---
+
+## 14. Roadmap post-MVP
+
+### 14.1 Cuándo agregar WhatsApp
+
+Cuando se cumplan **todos**:
+
+- [ ] Producto validado: D30 retention > 30%, pago recurrente.
+- [ ] Volumen: > 5.000 usuarios activos.
+- [ ] Push open rate `daily_reminder` < 10% (señal que push no es
+  suficiente).
+- [ ] Margen del producto soporta $1–3 USD/usuario/mes en WhatsApp.
+
+### 14.2 Casos de uso prioritarios para WhatsApp
+
+En orden:
+
+1. **Re-engagement de usuarios inactivos D7+** (donde push falló).
+2. **Concierge para Pro/Premium** ("tu tutor por WhatsApp").
+3. **Recuperación de churn** (usuarios que cancelaron).
+4. **Avisos críticos con CTA inmediato** (payment failed con link).
+
+### 14.3 Otros canales post-MVP
+
+- Email transaccional masivo (Resend) para reportes semanales detallados.
+- Firebase In-App Messaging para anuncios contextuales.
+- Web push cuando se lance web app (mes 9+).
+
+### 14.4 Migraciones técnicas potenciales
+
+- FCM HTTP v1 → Firebase Admin SDK directo si migramos a Node.js
+  servers (escala muy grande).
+- Cloudflare Cron Triggers → Inngest si la lógica de scheduling se
+  vuelve compleja.
+
+---
+
+## 15. Decisiones cerradas
+
+### 15.1 FCM directo (no Expo Push) ✓
+
+(Ver ADR-004.)
+
+### 15.2 Personalización con IA en batch nocturno ✓
+
+**Razón:** open rate sube significativamente con personalización vs
+templates genéricos. Costo despreciable ($150/mes a 10k users) vs
+beneficio en retention.
+
+### 15.3 NO WhatsApp en MVP ✓
+
+**Razón:** costo + complejidad. Reconsiderar con criterios de §14.1.
+
+### 15.4 NO email masivo en MVP ✓
+
+**Razón:** open rate bajo para apps consumer; recibos los manejan
+Stripe/RevenueCat.
+
+### 15.5 NO snooze de notificaciones por 1 hora ✓
+
+**Razón:** complejidad UI sin beneficio claro. User puede silenciar a
+nivel SO.
+
+### 15.6 Smart timing (aprender hora real de uso): **post-MVP** ✓
+
+**Razón:** feature interesante pero requiere data acumulada. MVP usa
+hora preferida declarada; smart override en Fase 2.
+
+### 15.7 NO notificaciones grupales en MVP ✓
+
+**Razón:** complejidad implementación. Suprimimos extras y user ve
+todo en su perfil.
+
+### 15.8 NO rich notifications (imágenes/audio embedded) en MVP ✓
+
+**Razón:** complejidad payload + rendering. Texto simple alcanza.
+
+### 15.9 A/B test de variantes con Firebase Remote Config: **post-MVP** ✓
+
+**Razón:** PostHog feature flags suplen para empezar.
+
+---
+
+## 16. Plan de implementación
+
+### 16.1 Sprint 1 (semana 1)
+
+- Proyecto Firebase configurado iOS+Android.
+- SDK en Expo dev build.
+- Endpoint `/notifications/register-token`.
+- Tablas `user_fcm_tokens` y `user_notification_preferences`.
 - UI básica de preferencias.
 
-### 11.2 Sprint 2 (semana 2): Worker y envío básico
+### 16.2 Sprint 2 (semana 2)
 
-- Setup de Cloudflare Worker con secrets de Firebase.
-- Generación de access tokens y cache.
-- Función de envío FCM con manejo de errores.
+- Cloudflare Worker setup.
+- Generación de access tokens FCM con cache.
+- Función de envío FCM con manejo de errors.
 - Endpoint HTTP para test manual.
 
-### 11.3 Sprint 3 (semana 3): Cron triggers
+### 16.3 Sprint 3 (semana 3)
 
 - Cron de daily reminders timezone-aware.
 - Cron de detección de inactividad.
 - Cron de cleanup de tokens viejos.
 - Tabla `notifications_log` y logging.
 
-### 11.4 Sprint 4 (semana 4): Personalización con IA
+### 16.4 Sprint 4 (semana 4)
 
 - Tabla `notifications_scheduled`.
 - Integración con AI Gateway para batch nocturno.
-- Cron dispatcher de notifications_scheduled.
+- Cron dispatcher de scheduled.
 
-### 11.5 Sprint 5 (semana 5): Eventos y rate limiting
+### 16.5 Sprint 5 (semana 5)
 
-- Domain events handlers (level_complete, payment_failed, etc.).
+- Domain event handlers (level_complete, achievement_unlocked,
+  payment_failed, etc.).
 - Durable Object UserRateLimiter.
 - Circuit breaker logic.
 
-### 11.6 Sprint 6 (semana 6): Polish y observabilidad
+### 16.6 Sprint 6 (semana 6)
 
 - Firebase Analytics integration.
 - Eventos a PostHog.
@@ -789,20 +1066,19 @@ recibir o no van a volver.
 
 ---
 
-## 12. Costos estimados
+## 17. Costos
 
-### 12.1 MVP (10.000 usuarios activos)
+### 17.1 MVP (10.000 usuarios activos)
 
 | Componente | Costo mensual |
 |-----------|---------------|
-| FCM | $0 (gratis ilimitado) |
-| Cloudflare Workers | $5 (plan paid para Cron) |
-| Cloudflare KV | $0 (tier gratuito) |
-| Cloudflare Durable Objects | $5 |
+| FCM | $0 |
+| Cloudflare Workers | $5 |
+| Cloudflare KV + DO | $5 |
 | AI Gateway (personalización) | ~$150 |
 | **Total** | **~$160/mes** |
 
-### 12.2 A escala (100.000 usuarios activos)
+### 17.2 Escala (100.000 usuarios activos)
 
 | Componente | Costo mensual |
 |-----------|---------------|
@@ -812,71 +1088,23 @@ recibir o no van a volver.
 | AI Gateway | ~$1.500 |
 | **Total** | **~$1.570/mes** |
 
-El costo escala muy bien gracias a que FCM es gratis. El driver principal
-es la personalización IA, que aporta valor directo a retención.
+---
+
+## 18. Referencias internas
+
+| Documento | Relación |
+|-----------|----------|
+| [`../decisions/ADR-004-notifications-fcm.md`](../decisions/ADR-004-notifications-fcm.md) | Decisión arquitectónica. |
+| [`authentication-system.md`](authentication-system.md) | Firebase también para Auth. |
+| [`ai-gateway-strategy.md`](ai-gateway-strategy.md) §4.2.7 | Task `generate_notification_content`. |
+| [`anti-fraud-system.md`](anti-fraud-system.md) | Lee `user_restrictions` antes de enviar. |
+| [`../product/motivation-and-achievements.md`](../product/motivation-and-achievements.md) | Emite `achievement.unlocked` que dispara push. |
+| [`../product/pedagogical-system.md`](../product/pedagogical-system.md) | `block.struggling_detected` → notificación empática. |
+| [`sparks-system.md`](sparks-system.md) | `sparks.balance_low` y `sparks.depleted` → push. |
+| [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) §5.6 | Eventos `notification.*`. |
+| [`../cross-cutting/security-threat-model.md`](../cross-cutting/security-threat-model.md) §3.8 | Amenazas de notifications. |
 
 ---
 
-## 13. Roadmap post-MVP
-
-### 13.1 Cuándo evaluar agregar WhatsApp
-
-Considerar agregar WhatsApp Business API cuando se cumplan **todos**:
-
-- [ ] Producto validado: pago recurrente, retention D30 > 30%.
-- [ ] Volumen suficiente: > 5.000 usuarios activos.
-- [ ] Push notifications con open rate < 10% (signal que push no es suficiente).
-- [ ] Margen del producto soporta el costo adicional ($1-3 USD/usuario/mes
-  en WhatsApp).
-
-### 13.2 Casos de uso prioritarios para WhatsApp (cuando se agregue)
-
-En orden de prioridad:
-
-1. **Re-engagement de usuarios inactivos d7+**: donde push ya falló,
-   WhatsApp tiene 80%+ open rate.
-2. **Concierge para Pro/Premium**: feature diferenciadora "tu tutor por
-   WhatsApp".
-3. **Recuperación de churn**: usuarios que cancelaron suscripción.
-4. **Avisos críticos con CTA inmediato**: payment failed con link de pago.
-
-### 13.3 Otros canales a considerar post-MVP
-
-- **Email transaccional masivo:** Resend para reportes semanales detallados,
-  newsletters educativos.
-- **In-app messaging avanzado:** Firebase In-App Messaging para anuncios
-  contextuales.
-- **Web push:** cuando se lance la web app (mes 9+).
-
-### 13.4 Migraciones técnicas potenciales
-
-- **FCM HTTP v1 → FCM via Firebase Admin SDK directo:** si se migra el
-  backend a Node.js servers en lugar de Workers (escala muy grande).
-- **Cloudflare Cron Triggers → orquestador dedicado** (Inngest, Trigger.dev):
-  si la lógica de scheduling se vuelve compleja con muchos workflows.
-
----
-
-## 14. Decisiones abiertas
-
-- [ ] ¿Permitir snooze de notificaciones por 1 hora desde la propia notif?
-- [ ] ¿Smart timing: aprender cuándo cada usuario suele abrir vs hora preferida declarada?
-- [ ] ¿Notificaciones grupales (múltiples eventos en un solo mensaje)?
-- [ ] ¿Rich notifications con imágenes/audio embebido?
-- [ ] ¿A/B test de variantes de mensajes con Firebase Remote Config?
-
----
-
-## 15. Referencias internas
-
-- `docs/business/plan_de_negocio.docx` — Plan de negocio.
-- `docs/product/ai-roadmap-system.md` — Sistema de roadmap.
-- `docs/architecture/ai-gateway-strategy.md` — AI Gateway (provee personalización).
-- `docs/architecture/platform-strategy.md` — Estrategia de plataformas.
-- `docs/architecture/sparks-system.md` — Sistema de Sparks.
-- `docs/decisions/ADR-004-notifications-fcm.md` — ADR de elección FCM (a crear).
-
----
-
-*Documento vivo. Actualizar cuando cambien tipos de notificaciones,
-proveedores o se agreguen canales nuevos post-MVP.*
+*Documento vivo. Actualizar cuando se agreguen tipos de notificaciones,
+cambien proveedores, o se agreguen canales nuevos post-MVP.*
