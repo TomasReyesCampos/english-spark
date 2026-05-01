@@ -1,38 +1,70 @@
 # AI Roadmap System
 
 > Sistema de roadmap de aprendizaje personalizado y adaptado por IA.
-> Documento de referencia técnica para implementación.
+> Genera, mantiene y adapta el camino de aprendizaje del usuario.
+> "IA cura, no inventa": el LLM selecciona y secuencia bloques de una
+> biblioteca predefinida.
 
-**Estado:** Diseño v1.0
+**Estado:** Diseño v1.1 (profundizado para implementación)
 **Última actualización:** 2026-04
 **Owner:** —
+**Audiencia primaria:** agente AI implementador.
+**Alcance:** Sistema completo
 
 ---
 
-## 1. Visión general
+## 0. Cómo leer este documento
 
-El AI Roadmap System genera, mantiene y adapta un camino de aprendizaje personalizado para cada usuario, combinando una biblioteca curada de bloques de aprendizaje con análisis automatizado del progreso.
-
-El sistema se diseña bajo el principio de **"IA cura, no inventa"**: el LLM selecciona y secuencia bloques predefinidos en lugar de generar contenido desde cero. Esto garantiza coherencia pedagógica, costos controlados y experiencia consistente para el usuario.
-
-### 1.1 Objetivos del sistema
-
-- Mostrar al usuario un destino claro desde el día uno (mejora retención).
-- Personalizar el camino según objetivo, nivel real y errores detectados.
-- Adaptar el roadmap continuamente sin requerir IA en cada interacción.
-- Mantener costos por usuario por debajo de 0.10 USD el primer mes y 0.02 USD en meses subsiguientes.
-
-### 1.2 Lo que NO hace el sistema
-
-- No genera contenido educativo nuevo en tiempo real.
-- No usa IA en cada apertura de la app.
-- No produce paths únicos imposibles de validar pedagógicamente.
+- §1 establece **visión y arquitectura**.
+- §2 cubre **boundaries**.
+- §3 cubre el **modelo de datos**.
+- §4 cubre **flujo de onboarding** (roadmap inicial).
+- §5 cubre **generación inicial** del roadmap (Day 0).
+- §6 cubre **assessment del Day 7** y roadmap definitivo.
+- §7 cubre **adaptación nocturna**.
+- §8 cubre **insights humanizados**.
+- §9 cubre **API contracts**.
+- §10 enumera **edge cases**.
+- §11 cubre **eventos emitidos/consumidos**.
+- §12 cubre **stack tecnológico**.
+- §13 cubre **plan de implementación**.
+- §14 cubre **decisiones cerradas**.
 
 ---
 
-## 2. Arquitectura del sistema
+## 1. Visión
 
-### 2.1 Capas funcionales
+El sistema combina:
+1. **Biblioteca curada** de bloques (gestionada por
+   `content-creation-system`).
+2. **Generación con IA** que selecciona y secuencia bloques
+   personalizadamente.
+3. **Análisis SQL nocturno** + IA selectiva en batch para adaptación.
+4. **Presentación humanizada** con insights y reasoning.
+
+### 1.1 Principio rector
+
+**"IA cura, no inventa."** El LLM selecciona y secuencia bloques
+predefinidos en lugar de generar contenido desde cero. Garantiza:
+
+- Coherencia pedagógica.
+- Costos controlados.
+- Experiencia consistente.
+
+### 1.2 Objetivos del sistema
+
+- Mostrar al usuario un destino claro desde el Día 0.
+- Personalizar según objetivo, nivel real y errores detectados.
+- Adaptar continuamente sin requerir IA en cada interacción.
+- Mantener costos < $0.10 USD primer mes; < $0.02 USD meses subsiguientes.
+
+### 1.3 Lo que NO hace
+
+- Generar contenido educativo nuevo en runtime.
+- Usar IA en cada apertura de la app.
+- Producir paths únicos imposibles de validar pedagógicamente.
+
+### 1.4 Capas funcionales
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -60,30 +92,39 @@ El sistema se diseña bajo el principio de **"IA cura, no inventa"**: el LLM sel
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Flujo de datos end-to-end
+---
 
-```
-[Usuario nuevo] 
-    → Onboarding (5 preguntas + mini-test 5min)
-    → Análisis del audio del test (Whisper + scoring)
-    → Generación de roadmap (LLM single call)
-    → Persistencia en Postgres
-    → UI muestra roadmap personalizado
+## 2. Boundaries
 
-[Usuario activo - sesión diaria]
-    → Cliente solicita "next block"
-    → API consulta UserRoadmap.active_block
-    → Devuelve bloque + assets asociados
-    → Usuario practica
-    → Eventos van a cola → data lake
+### 2.1 Es responsable de
 
-[Job nocturno]
-    → SQL agrega métricas del día
-    → Reglas determinan si usuario necesita re-análisis
-    → Si sí: batch IA actualiza roadmap
-    → Si no: sigue con roadmap actual
-    → Se generan insights humanizados (batch)
-```
+- Generar roadmap inicial (Day 0) y definitivo (Day 7).
+- Persistir y servir el roadmap del usuario.
+- Decidir el próximo bloque ("getNextBlock") consumiendo `mastery` de
+  pedagogical-system.
+- Job nocturno que evalúa qué usuarios necesitan re-análisis.
+- Adaptar el roadmap (insertar bloques de refuerzo, reorder, skip).
+- Generar insights humanizados (mensaje matutino, semanal, post-nivel).
+- Emitir eventos `roadmap.*` y `level.*`.
+
+### 2.2 NO es responsable de
+
+- **Crear contenido de bloques** (eso es `content-creation-system`).
+- **Calcular mastery** (eso es `pedagogical-system`).
+- **Cobrar Sparks** (eso es `sparks-system` invocado vía AI Gateway).
+- **Otorgar logros** (eso es `motivation-and-achievements`).
+- **Detectar struggling** (eso es `pedagogical-system`).
+- **Mostrar UI del roadmap** (eso es el cliente consumiendo
+  `getRoadmapForUser`).
+
+### 2.3 Tensiones
+
+| Tensión | Resolución |
+|---------|-----------|
+| Pedagogical detecta struggling → ¿quién decide qué hacer? | Pedagogical emite evento, AI Roadmap reacciona insertando bloques de refuerzo o sugiriendo prerequisito |
+| User cambia objetivo mid-roadmap | Profile emite `profile.updated`; AI Roadmap evalúa si regenerar (significant_change) o adaptar |
+| Bloque deprecado en biblioteca | Roadmap mantiene snapshot; nuevos roadmaps usan versión nueva |
+| LLM devuelve roadmap inválido | Validación Zod; retry; fallback a template |
 
 ---
 
@@ -91,120 +132,81 @@ El sistema se diseña bajo el principio de **"IA cura, no inventa"**: el LLM sel
 
 ### 3.1 Entidades principales
 
-#### LearningBlock (biblioteca, compartido entre usuarios)
+#### LearningBlock (biblioteca, compartido)
+
+(Owned por `content-creation-system`. Schema en
+`content-creation-system.md` §7.)
 
 ```typescript
 interface LearningBlock {
-  id: string;                    // "block_job_intro_001"
-  title: string;                 // "Presentar tu experiencia laboral"
+  id: string;                      // 'block_job_intro_001'
+  title: string;
   description: string;
-  cefr_level: 'B1' | 'B2' | 'C1';
-  context_tags: string[];        // ["work", "interview", "self-introduction"]
-  required_subskills: string[];  // ["past_simple", "vocabulary_work"]
-  prerequisites: string[];       // ids de otros blocks
+  cefr_level: 'A2' | 'B1' | 'B1+' | 'B2' | 'B2+' | 'C1';
+  context_tags: string[];          // ['work', 'interview']
+  required_subskills: string[];    // ['gram_past_simple_continuous']
+  prerequisites: string[];          // block IDs
   estimated_minutes: number;
-  asset_ids: string[];           // referencias a assets de la biblioteca
-  mastery_criteria: {
-    min_accuracy: number;        // ej: 0.8
-    min_fluency_score: number;   // ej: 6.0
-    required_assets_completed: number;
-  };
-  created_at: timestamp;
-  updated_at: timestamp;
+  asset_ids: string[];
+  mastery_criteria: BlockMasteryCriteria;
+  created_at: string;
+  updated_at: string;
 }
 ```
 
-#### UserRoadmap (instancia personalizada por usuario)
+#### UserRoadmap (instancia personalizada)
 
 ```typescript
 interface UserRoadmap {
   id: string;
   user_id: string;
-  generated_at: timestamp;
-  last_updated_at: timestamp;
-  primary_goal: string;          // "job_interview" | "travel" | etc.
-  deadline?: Date;
+  type: 'initial' | 'definitive' | 'regenerated';
+  generated_at: string;
+  last_updated_at: string;
+  primary_goal: string;
+  deadline?: string;
   starting_cefr: string;
   target_cefr: string;
   estimated_completion_weeks: number;
   current_level_id: string;
   total_blocks: number;
   completed_blocks: number;
-  ai_summary: string;            // resumen humanizado del path
+  ai_summary: string;
   levels: RoadmapLevel[];
 }
 
 interface RoadmapLevel {
   id: string;
-  name: string;                  // "Fundamentos de Job Ready"
+  name: string;                    // "Fundamentos de Job Ready"
   order: number;
   status: 'locked' | 'active' | 'completed';
-  ai_reasoning: string;          // por qué este nivel
+  ai_reasoning: string;
   estimated_weeks: number;
   blocks: RoadmapBlock[];
 }
 
 interface RoadmapBlock {
-  block_id: string;              // referencia a LearningBlock
+  block_id: string;
   order_within_level: number;
   status: 'locked' | 'active' | 'completed' | 'tested_out';
-  personalization_reason: string; // "Incluido por errores en past tense"
+  personalization_reason: string;  // "Incluido por errores en past tense"
   mastery_score?: number;
   attempts: number;
-  completed_at?: timestamp;
+  completed_at?: string;
 }
 ```
 
-#### UserProfile (datos del onboarding)
-
-```typescript
-interface UserProfile {
-  user_id: string;
-  primary_goals: string[];
-  deadline?: Date;
-  professional_context: string;  // "tech" | "health" | "sales" | etc.
-  self_perceived_level: string;
-  self_perceived_anxiety: number; // 1-5
-  daily_minutes_available: number;
-  initial_test_results: {
-    cefr_estimate: string;
-    fluency_score: number;
-    pronunciation_score: number;
-    detected_error_patterns: string[];  // ["th_pronunciation", "past_perfect_misuse"]
-    recorded_at: timestamp;
-  };
-  updated_at: timestamp;
-}
-```
-
-### 3.2 Schema SQL (Postgres / Supabase)
+### 3.2 Schema Postgres
 
 ```sql
--- Biblioteca de bloques (shared, read-only desde la app)
-CREATE TABLE learning_blocks (
-  id              TEXT PRIMARY KEY,
-  title           TEXT NOT NULL,
-  description     TEXT,
-  cefr_level      TEXT NOT NULL CHECK (cefr_level IN ('B1','B2','C1')),
-  context_tags    TEXT[] NOT NULL DEFAULT '{}',
-  required_subskills TEXT[] NOT NULL DEFAULT '{}',
-  prerequisites   TEXT[] NOT NULL DEFAULT '{}',
-  estimated_minutes INT NOT NULL,
-  asset_ids       TEXT[] NOT NULL DEFAULT '{}',
-  mastery_criteria JSONB NOT NULL,
-  created_at      TIMESTAMPTZ DEFAULT now(),
-  updated_at      TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_blocks_cefr ON learning_blocks(cefr_level);
-CREATE INDEX idx_blocks_context ON learning_blocks USING gin(context_tags);
-
 -- Roadmaps personalizados
 CREATE TABLE user_roadmaps (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID NOT NULL REFERENCES users(id),
-  generated_at    TIMESTAMPTZ DEFAULT now(),
-  last_updated_at TIMESTAMPTZ DEFAULT now(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type            TEXT NOT NULL CHECK (type IN ('initial', 'definitive', 'regenerated')),
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  generated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   primary_goal    TEXT NOT NULL,
   deadline        DATE,
   starting_cefr   TEXT NOT NULL,
@@ -212,117 +214,108 @@ CREATE TABLE user_roadmaps (
   estimated_completion_weeks INT,
   current_level_id TEXT,
   total_blocks    INT NOT NULL,
-  completed_blocks INT DEFAULT 0,
+  completed_blocks INT NOT NULL DEFAULT 0,
   ai_summary      TEXT,
-  structure       JSONB NOT NULL  -- levels y blocks aquí
+  structure       JSONB NOT NULL,    -- levels y blocks
+  generated_by_model TEXT,            -- ej: 'claude-haiku-4-5:v2'
+  generation_cost_usd NUMERIC(10,4)
 );
 
-CREATE INDEX idx_roadmaps_user ON user_roadmaps(user_id);
+CREATE INDEX idx_roadmaps_user_active
+  ON user_roadmaps(user_id) WHERE is_active = true;
 
--- Perfil del usuario
-CREATE TABLE user_profiles (
-  user_id         UUID PRIMARY KEY REFERENCES users(id),
-  primary_goals   TEXT[] NOT NULL,
-  deadline        DATE,
-  professional_context TEXT,
-  self_perceived_level TEXT,
-  self_perceived_anxiety INT,
-  daily_minutes_available INT,
-  initial_test_results JSONB,
-  updated_at      TIMESTAMPTZ DEFAULT now()
-);
-
--- Tracking de progreso por bloque
-CREATE TABLE user_block_progress (
-  user_id         UUID NOT NULL REFERENCES users(id),
-  block_id        TEXT NOT NULL REFERENCES learning_blocks(id),
-  status          TEXT NOT NULL CHECK (status IN ('locked','active','completed','tested_out')),
-  mastery_score   FLOAT,
-  attempts        INT DEFAULT 0,
-  first_attempted_at TIMESTAMPTZ,
-  completed_at    TIMESTAMPTZ,
-  PRIMARY KEY (user_id, block_id)
-);
-
-CREATE INDEX idx_progress_user_status ON user_block_progress(user_id, status);
+-- Solo un roadmap activo por usuario
+CREATE UNIQUE INDEX idx_one_active_roadmap_per_user
+  ON user_roadmaps(user_id) WHERE is_active = true;
 ```
+
+### 3.3 Histórico de roadmaps
+
+Cuando se genera un roadmap nuevo (definitive después del initial,
+regenerated por cambio de objetivo): el anterior se marca
+`is_active = false` pero se mantiene para histórico (audit + visualización
+de evolución).
 
 ---
 
-## 4. Flujo de onboarding (generación inicial)
+## 4. Onboarding inicial (Day 0)
+
+(Coordinado con `student-profile-and-assessment.md` §3.)
 
 ### 4.1 Preguntas estructuradas
 
-| # | Pregunta | Tipo | Opciones |
-|---|----------|------|----------|
-| 1 | ¿Por qué querés mejorar tu inglés? | Multi-select | Trabajo internacional, entrevista próxima, viajes, estudios, comunicación laboral actual, mejora personal |
-| 2 | ¿Tenés deadline? | Single | <1 mes, 1-3 meses, 3-6 meses, sin apuro |
-| 3 | ¿Área profesional/estudio? | Single | Tech, salud, finanzas, ventas, marketing, educación, otro |
-| 4 | ¿Cómo te sentís hablando inglés? | Single (1-5) | Me bloqueo / muy nervioso / nervioso pero hablo / fluyo con errores / fluyo bien |
-| 5 | ¿Cuánto tiempo al día? | Single | 5 min, 10-15 min, 20-30 min, +30 min |
+(Detalle en `student-profile-and-assessment.md` §3.2.)
 
 ### 4.2 Mini-test de 5 minutos
 
-Tres ejercicios diseñados para capturar audio analizable:
-
-1. **Lectura y resumen**: leer un párrafo de 80 palabras, luego resumirlo en voz alta sin verlo. Captura comprensión + producción.
-2. **Pregunta abierta**: responder "¿Cómo fue tu día ayer?" en 60 segundos. Captura fluidez espontánea + uso de tiempos verbales.
-3. **Frases con sonidos críticos**: 5 frases con /θ/, /ð/, vocales tensas, finales consonánticos. Captura errores fonéticos típicos del hispanohablante.
+Tres ejercicios para captar audio:
+1. Lectura y resumen oral (3 min).
+2. Pregunta abierta (60s).
+3. Frases con sonidos críticos (1 min).
 
 ### 4.3 Análisis del test
 
 Pipeline secuencial:
+1. STT con AI Gateway task `transcribe_user_audio`.
+2. Pronunciation scoring vía task `score_pronunciation`.
+3. Análisis de fluidez determinístico (WPM, pausas).
+4. Detección de errores con `detect_grammar_errors`.
+5. Estimación CEFR.
 
-1. STT con Whisper para transcribir los 3 audios.
-2. Scoring de pronunciación con modelo propio (o Azure Pronunciation Assessment como fallback inicial).
-3. Análisis de fluidez determinístico: WPM, pausas, palabras de relleno.
-4. Detección de errores gramaticales con LLM ligero sobre la transcripción.
-5. Estimación de CEFR basada en complejidad sintáctica + vocabulario + scores.
+Output: `initial_test_results` JSON persistido en `student_profiles`.
 
-Output: `initial_test_results` JSON con todos los scores y patrones detectados.
+### 4.4 Generación del roadmap inicial
+
+Llamada a AI Gateway task `generate_initial_roadmap` (ver
+`ai-gateway-strategy.md` §4.2.4).
+
+**Costo total:** ~$0.05 USD por usuario nuevo.
 
 ---
 
-## 5. Generación del roadmap inicial
+## 5. Generación del roadmap inicial (detallado)
 
 ### 5.1 Prompt template
 
 ```
-Sos un experto en didáctica del inglés para hispanohablantes 
-latinoamericanos con nivel intermedio. Tu tarea es seleccionar y 
-secuenciar bloques de aprendizaje de una biblioteca predefinida 
+Sos un experto en didáctica del inglés para hispanohablantes
+latinoamericanos con nivel intermedio. Tu tarea es seleccionar y
+secuenciar bloques de aprendizaje de una biblioteca predefinida
 para crear un roadmap personalizado.
 
 PERFIL DEL USUARIO:
-- Objetivos: {primary_goals}
-- Deadline: {deadline}
-- Contexto profesional: {professional_context}
-- Nivel autopercibido: {self_perceived_level}
-- Ansiedad lingüística: {self_perceived_anxiety}/5
-- Tiempo diario: {daily_minutes_available} minutos
+- Objetivos: {{primary_goals}}
+- Deadline: {{deadline}}
+- Contexto profesional: {{professional_context}}
+- Nivel autopercibido: {{self_perceived_level}}
+- Ansiedad lingüística: {{self_perceived_anxiety}}/5
+- Tiempo diario: {{daily_minutes_available}} minutos
 
 RESULTADOS DEL TEST INICIAL:
-- CEFR estimado: {cefr_estimate}
-- Fluidez: {fluency_score}/10
-- Pronunciación: {pronunciation_score}/10
-- Errores detectados: {detected_error_patterns}
+- CEFR estimado: {{cefr_estimate}}
+- Fluidez: {{fluency_score}}/10
+- Pronunciación: {{pronunciation_score}}/10
+- Errores detectados: {{detected_error_patterns}}
 
 BIBLIOTECA DISPONIBLE (selecciona de aquí, NO inventes bloques):
-{learning_blocks_filtered_by_relevant_cefr}
+{{learning_blocks_filtered_by_relevant_cefr}}
 
 INSTRUCCIONES:
-1. Seleccioná entre 30 y 50 bloques que cubran los objetivos del usuario.
+1. Seleccioná entre 30 y 50 bloques que cubran los objetivos del
+   usuario.
 2. Organizalos en 4-6 niveles temáticos con nombres motivadores.
 3. Respetá los prerequisites de cada bloque.
 4. Priorizá bloques que ataquen los errores detectados.
 5. Si hay deadline corto (<1 mes), elegí solo los esenciales.
-6. Si hay alta ansiedad, los primeros bloques deben ser de baja presión.
-7. Para cada bloque seleccionado, escribí UNA frase explicando por qué 
+6. Si hay alta ansiedad, los primeros bloques deben ser de baja
+   presión.
+7. Para cada bloque seleccionado, escribí UNA frase explicando por qué
    está incluido (personalization_reason).
 8. Para cada nivel, escribí UNA frase de motivación (ai_reasoning).
-9. Generá un ai_summary de 2-3 frases que el usuario verá al ver su roadmap.
+9. Generá un ai_summary de 2-3 frases que el usuario verá al ver su
+   roadmap.
 
-FORMATO DE SALIDA: JSON exacto con esta estructura:
+DEVOLVÉ JSON exacto siguiendo este schema (estructura aproximada):
 {
   "ai_summary": "...",
   "estimated_completion_weeks": N,
@@ -349,301 +342,633 @@ Devolvé SOLO el JSON, sin texto adicional ni markdown.
 
 ### 5.2 Validación post-generación
 
-Antes de persistir, el output del LLM se valida:
+Antes de persistir, output del LLM se valida con Zod schema +
+checks lógicos:
 
-- Todos los `block_id` referenciados existen en la biblioteca.
-- Los prerequisites se respetan en el orden generado.
-- El total de bloques está en rango (30-50).
-- El JSON es parseable y respeta el schema esperado.
-- La duración total estimada es coherente con el `daily_minutes_available` y el deadline.
+- Todos los `block_id` referenciados existen en `learning_blocks`.
+- Prerequisites se respetan en el orden generado.
+- Total de bloques en rango (30-50).
+- Duración total coherente con `daily_minutes_available` + deadline.
 
-Si la validación falla, se reintenta una vez. Si vuelve a fallar, se cae a un roadmap template del bucket más cercano del usuario.
+Si validación falla, retry una vez. Si vuelve a fallar, fallback a
+roadmap template del bucket más cercano del usuario (combinaciones
+goal/CEFR predefinidas).
 
-### 5.3 Costo estimado
+### 5.3 Bloques iniciales mostrados
 
-- LLM call (Claude Haiku o Gemini Flash): ~0.02 USD
-- Análisis del audio del test: ~0.03 USD
-- **Total onboarding: ~0.05 USD por usuario nuevo**
+User ve los **2 primeros niveles completos** + preview borrosa del
+resto. Preserva intriga y deja espacio para que el assessment del
+Day 7 "expanda" el roadmap.
 
 ---
 
-## 6. Adaptación nocturna del roadmap
+## 6. Assessment del Day 7 y roadmap definitivo
 
-### 6.1 Reglas de re-análisis (filtrado SQL antes de IA)
+### 6.1 Trigger
 
-Solo se llama a la IA si se cumple alguna de estas condiciones:
+(Detalle en `student-profile-and-assessment.md` §5.)
+
+Day 7 (o antes si Sparks runout o user solicita): assessment de 20 min.
+Después del completado, generate definitive roadmap.
+
+### 6.2 Generación del definitivo
+
+Llamada a AI Gateway task `generate_definitive_roadmap` con:
+
+- Profile completo + observed_behavior de los 7 días.
+- Assessment results detallados.
+- Performance en bloques iniciales.
+
+**Diferencias con initial:**
+
+| Aspecto | Inicial (Day 0) | Definitivo (Day 7+) |
+|---------|----------------|---------------------|
+| Basado en | 5 preguntas + mini-test | Profile completo + 7 días observación + assessment 20 min |
+| Duración | 4 semanas estimadas | 8–16 semanas precisas |
+| Bloques | 30–40 generales | 50–80 específicos al perfil |
+| Foco | General por objetivo | Específico a errores detectados |
+| Variant inglés | Default del país | Confirmada por preferencia |
+| Niveles | 4 estándar | 4–6 personalizados |
+| Mensaje | "Plan inicial provisional" | "Tu plan definitivo, hecho para vos" |
+
+### 6.3 Persistencia y archivado
 
 ```sql
--- Pseudocódigo de la regla
+-- Atomic swap
+BEGIN;
+UPDATE user_roadmaps SET is_active = false WHERE user_id = $1 AND is_active = true;
+INSERT INTO user_roadmaps (user_id, type, is_active, ...) VALUES ($1, 'definitive', true, ...);
+COMMIT;
+```
+
+Roadmap initial queda como histórico para que el user pueda ver
+"cómo evolucionó mi plan".
+
+---
+
+## 7. Adaptación nocturna del roadmap
+
+### 7.1 Reglas de re-análisis (filtrado SQL antes de IA)
+
+Solo se llama a IA si se cumple alguna condición:
+
+```sql
 SELECT user_id FROM users
 WHERE active = true
   AND (
-    -- Completó un nivel completo en las últimas 24h
-    user_id IN (SELECT user_id FROM level_completions 
+    -- Completó un nivel completo en últimas 24h
+    user_id IN (SELECT user_id FROM level_completions
                 WHERE completed_at > now() - interval '24 hours')
-    
-    -- Patrón de error fuerte no contemplado en el roadmap actual
+
+    -- Patrón de error fuerte no contemplado
     OR user_id IN (SELECT user_id FROM error_patterns_daily
                    WHERE pattern_intensity > 0.7
                      AND not_in_current_roadmap = true)
-    
+
     -- Desviación significativa de velocidad esperada
     OR user_id IN (SELECT user_id FROM progress_velocity
                    WHERE actual_pace / expected_pace NOT BETWEEN 0.5 AND 2.0)
-    
+
     -- Cambio reciente en perfil (deadline, objetivo)
-    OR user_id IN (SELECT user_id FROM user_profiles
-                   WHERE updated_at > now() - interval '24 hours')
+    OR user_id IN (SELECT user_id FROM student_profiles
+                   WHERE updated_at > now() - interval '24 hours'
+                     AND significant_change = true)
+
+    -- Bloques struggling sin atender
+    OR user_id IN (SELECT user_id FROM user_block_status
+                   WHERE status = 'struggling'
+                     AND struggling_since < now() - interval '24 hours')
   );
 ```
 
-Esta regla típicamente captura entre el 5% y el 10% de los usuarios activos cada noche.
+Esta regla típicamente captura **5-10%** de usuarios activos por
+noche.
 
-### 6.2 Prompt de actualización
+### 7.2 Prompt de actualización
+
+Llamada a AI Gateway task `nightly_roadmap_update` con Batch API
+(50% off):
 
 ```
 ROADMAP ACTUAL DEL USUARIO:
-{current_roadmap_summary}
+{{current_roadmap_summary}}
 
 PROGRESO RECIENTE (últimos 7 días):
-- Bloques completados: {completed_blocks}
-- Subskills mejoradas: {improved_subskills}
-- Errores nuevos detectados: {new_error_patterns}
-- Velocidad real vs esperada: {velocity_ratio}
+- Bloques completados: {{completed_blocks}}
+- Subskills mejoradas: {{improved_subskills}}
+- Errores nuevos detectados: {{new_error_patterns}}
+- Velocidad real vs esperada: {{velocity_ratio}}
+- Bloques marcados struggling: {{struggling_blocks}}
 
 CAMBIOS EN PERFIL:
-{profile_changes}
+{{profile_changes}}
 
 INSTRUCCIONES:
-Devolvé un JSON con los cambios al roadmap (no el roadmap completo):
+Devolvé un JSON con cambios al roadmap (NO el roadmap completo):
 {
   "blocks_to_add": [{block_id, target_level, position, reason}],
   "blocks_to_remove": [{block_id, reason}],
   "blocks_to_reorder": [{block_id, new_position, reason}],
   "blocks_to_test_out": [{block_id, reason}],
   "updated_estimated_weeks": N,
-  "user_facing_message": "Mensaje de 1-2 frases explicando los cambios"
+  "user_facing_message": "Mensaje de 1-2 frases"
 }
 ```
 
-El motor aplica esos diffs al roadmap existente, en lugar de reemplazarlo entero. Eso preserva el historial y permite que el usuario vea evolución.
+El motor aplica diffs al roadmap existente. Preserva historial.
 
-### 6.3 Costo estimado en escala
+### 7.3 Costos
 
 | Usuarios activos | Re-análisis/noche | Costo IA batch | Total/mes |
 |-----------------:|-------------------:|---------------:|----------:|
-| 1.000            | 50-100            | $0.50          | $15       |
-| 10.000           | 500-1.000         | $5.00          | $150      |
-| 100.000          | 5.000-10.000      | $25.00         | $750      |
+| 1.000 | 50–100 | $0.50 | $15 |
+| 10.000 | 500–1.000 | $5.00 | $150 |
+| 100.000 | 5.000–10.000 | $25.00 | $750 |
 
-Por usuario activo, el costo de mantenimiento del roadmap es ~0.01 USD/mes.
+Por usuario activo: ~$0.01 USD/mes de mantenimiento de roadmap.
 
 ---
 
-## 7. Insights humanizados
+## 8. Insights humanizados
 
-### 7.1 Tipos de insights generados
+### 8.1 Tipos
 
-Cada noche, en batch, el sistema genera mensajes humanizados que el usuario ve durante el día:
+| Insight | Cuándo | Generado por |
+|---------|--------|--------------|
+| Mensaje matutino | Diario, antes de hora preferida | Batch nocturno (`generate_morning_message`) |
+| Razón del bloque actual | UI on-demand | Pre-generado al setear bloque activo |
+| Insight semanal | Domingos | Batch (`generate_weekly_summary`) |
+| Mensaje al completar nivel | Por evento `level.completed` | Realtime (`generate_level_completion_message`) |
 
-- **Mensaje matutino**: "Hoy enfocaremos en X porque Y."
-- **Razón de cada bloque**: "¿Por qué este ejercicio?" disponible al expandir cada bloque.
-- **Insight semanal (domingos)**: "Esta semana mejoraste 18% en fluidez..."
-- **Mensaje al completar nivel**: "Completaste Foundations. Tu próximo desafío..."
+### 8.2 Generación batch nocturna
 
-### 7.2 Estrategia de generación
-
-Los insights se generan en batch nocturno con un prompt único que cubre múltiples mensajes para el mismo usuario, optimizando llamadas a la API.
+Prompt único cubre múltiples mensajes para mismo usuario, optimizando
+llamadas:
 
 ```
-Generá los siguientes mensajes para este usuario, en español neutro 
+Generá los siguientes mensajes para este usuario, en español neutro
 latinoamericano, tono cercano pero profesional, 1-2 frases cada uno:
 
-DATOS DEL USUARIO: {user_summary}
-PROGRESO RECIENTE: {weekly_progress}
+DATOS: {{user_summary}}
+PROGRESO RECIENTE: {{weekly_progress}}
 
 MENSAJES A GENERAR:
-1. Mensaje matutino para mañana (objetivo del día: {tomorrow_focus})
-2. Razón del próximo bloque: {next_block}
-3. Si completó nivel ayer: mensaje de celebración + preview del siguiente
+1. Mensaje matutino para mañana (objetivo del día: {{tomorrow_focus}})
+2. Razón del próximo bloque: {{next_block}}
+3. Si completó nivel ayer: mensaje de celebración + preview del
+   siguiente
 
-Devolvé JSON con keys: morning_message, next_block_reason, level_celebration.
+Devolvé JSON con keys: morning_message, next_block_reason,
+level_celebration.
 ```
 
-### 7.3 Costo
+### 8.3 Costo
 
-Aproximadamente 0.001-0.003 USD por usuario por semana. Despreciable.
+~$0.001-0.003 USD por usuario por semana. Despreciable.
 
 ---
 
-## 8. Stack tecnológico
+## 9. API contracts
 
-### 8.1 Stack para esta feature específicamente
+### 9.1 `generateInitialRoadmap`
 
-| Componente | Tecnología | Por qué |
-|-----------|-----------|---------|
-| **Base de datos roadmaps** | Postgres (Supabase) | Relaciones complejas, JSONB para estructura flexible, queries SQL potentes para job nocturno |
-| **Cache de bloques** | Redis (Upstash) | La biblioteca cambia poco, se cachea en memoria. Hit rate >95% |
-| **Storage de assets** | Cloudflare R2 | Sin egress fees, CDN global, audio servido rápido en Latam |
-| **Análisis de audio del test** | Whisper (Deepgram inicialmente, self-hosted después) | STT preciso, fallback gradual a propio |
-| **Pronunciation scoring** | Azure Pronunciation Assessment (MVP) → modelo propio (mes 6+) | Empezar con API, reemplazar cuando haya datos |
-| **LLM generación roadmap** | Claude Haiku 4.5 o Gemini 2.0 Flash | Modelos baratos, JSON output confiable, suficiente para curaduría |
-| **LLM batch nocturno** | Anthropic Batch API (50% off) | Batch async sin urgencia, máximo descuento |
-| **Orquestación job nocturno** | Inngest (MVP) → Dagster (escala) | Inngest es serverless, simple, ideal para empezar solo |
-| **Cola de eventos** | Inngest events (MVP) → SQS o Pub/Sub | Misma plataforma, simplifica |
-| **Data lake** | S3 + Parquet, queries con AWS Athena | Pago por TB escaneado, óptimo para volúmenes bajos-medios |
-| **Análisis SQL agregado** | Athena inicialmente, BigQuery a partir de 50k usuarios | Athena no requiere infra, BigQuery escala mejor |
-| **API Layer** | Cloudflare Workers (TypeScript) o Vercel Edge | Latencia baja en Latam, serverless, fácil de operar solo |
-| **Validación de schemas** | Zod (TypeScript) | Type-safe end-to-end, validación de outputs de LLM |
-| **Observability** | Sentry + PostHog + Better Stack | Errores, analytics, uptime — los 3 tienen tier gratuito generoso |
+**Llamado por:** student-profile-and-assessment al completar onboarding
++ mini-test.
 
-### 8.2 Por qué este stack (decisiones clave)
+**Request:**
 
-#### Postgres + Supabase para todo el estado operacional
-La estructura del roadmap es relacional pero con flexibilidad necesaria en `levels[].blocks[]`. JSONB de Postgres da lo mejor de ambos mundos: queries SQL potentes + estructura flexible. Supabase elimina la necesidad de operar una base de datos.
+```typescript
+interface GenerateInitialRoadmapRequest {
+  user_id: string;
+  profile_snapshot: StudentProfileSnapshot;
+  initial_test_results: InitialTestResults;
+}
+```
 
-#### Cloudflare Workers como API layer
-Latencia desde México/Argentina/Colombia a un Worker es de 20-50ms, vs 200-400ms a un servidor en us-east. Para una app que usa audio en tiempo real, esto importa. Además, Workers escalan a cero (gratis cuando no hay tráfico) y no requieren manejar servidores.
+**Response:**
 
-#### Inngest para orquestación
-Es la pieza menos obvia pero más importante para vos como dev solo. Inngest te da:
-- Cron jobs serverless (el nocturno)
-- Workflows con steps (cada etapa del pipeline)
-- Reintentos automáticos
-- Observabilidad incorporada
-- Tier gratuito generoso (50k ejecuciones/mes)
+```typescript
+interface GenerateInitialRoadmapResponse {
+  roadmap_id: string;
+  ai_summary: string;
+  total_blocks: number;
+  estimated_completion_weeks: number;
+  first_block: {
+    block_id: string;
+    title: string;
+  };
+}
+```
 
-Sin esto, terminás operando tu propio Airflow o cron en VPS, y eso suma complejidad innecesaria al inicio.
+### 9.2 `generateDefinitiveRoadmap`
 
-#### Anthropic Batch API para el job nocturno
-50% de descuento sobre las llamadas normales. Como el análisis nocturno no es urgente (puede tomar horas), Batch API es perfecto. La diferencia entre $50/mes y $25/mes a escala importa.
+**Llamado por:** student-profile-and-assessment al `assessment.completed`.
 
-#### Claude Haiku o Gemini Flash para la curaduría
-Para esta tarea (selección y ordenamiento de bloques predefinidos con razonamiento sobre datos del usuario), modelos como Haiku 4.5 o Gemini 2.0 Flash son más que suficientes. Cuestan 10x menos que los modelos premium y la calidad es indistinguible para este caso de uso.
+```typescript
+interface GenerateDefinitiveRoadmapRequest {
+  user_id: string;
+  assessment_results: AssessmentResults;
+  observed_behavior: ObservedBehavior;
+}
+```
 
-#### Zod para validación
-Crítico cuando trabajás con outputs de LLM. Le pasás el JSON al validador Zod, y si falla, reintentás con feedback al modelo. Sin esto, vas a tener bugs raros en producción cuando el LLM devuelva algo ligeramente fuera de schema.
+**Reglas:**
+- Archiva el initial.
+- Crea definitive con `is_active = true`.
+- Emite `roadmap.generated` con `type: 'definitive'`.
 
-### 8.3 Costos del stack en escala
+### 9.3 `regenerateRoadmap`
+
+**Llamado por:** internal cuando user cambia objetivo significativamente.
+
+```typescript
+interface RegenerateRoadmapRequest {
+  user_id: string;
+  trigger_reason: string;          // 'goal_changed' | 'deadline_changed' | ...
+  preserve_completed_blocks: boolean; // default true
+}
+```
+
+### 9.4 `getDailyPlan`
+
+**Llamado por:** cliente al abrir la app.
+
+**Request:**
+
+```typescript
+interface GetDailyPlanRequest {
+  user_id: string;
+  date?: string;                   // default today
+}
+```
+
+**Response:**
+
+```typescript
+interface GetDailyPlanResponse {
+  blocks: Array<{
+    block_id: string;
+    title: string;
+    estimated_minutes: number;
+    reason: 'next_in_roadmap' | 'spaced_review' |
+            'reinforcement' | 'struggling_recovery';
+    target_subskills: string[];
+  }>;
+  total_estimated_minutes: number;
+  morning_message?: string;
+}
+```
+
+Implementación: combina `pedagogical-system.getNextBlocksForUser`
++ insights pre-generados.
+
+### 9.5 `getRoadmapForUser`
+
+**Llamado por:** cliente para mostrar pantalla de roadmap.
+
+```typescript
+interface GetRoadmapForUserRequest {
+  user_id: string;
+  include_history?: boolean;       // default false
+}
+
+interface GetRoadmapForUserResponse {
+  roadmap: UserRoadmap;
+  progress_pct: number;
+  current_level: RoadmapLevel;
+  next_milestone: {
+    type: 'level_completion' | 'cefr_jump' | 'track_completion';
+    description: string;
+    blocks_remaining: number;
+  };
+  history?: UserRoadmap[];          // si include_history
+}
+```
+
+### 9.6 Internal: `applyNightlyUpdate`
+
+**Llamado por:** job nocturno.
+
+```typescript
+interface ApplyNightlyUpdateRequest {
+  user_id: string;
+  diffs: RoadmapDiff;
+}
+
+interface RoadmapDiff {
+  blocks_to_add: Array<{
+    block_id: string;
+    target_level: string;
+    position: number;
+    reason: string;
+  }>;
+  blocks_to_remove: Array<{ block_id: string; reason: string }>;
+  blocks_to_reorder: Array<{ block_id: string; new_position: number; reason: string }>;
+  blocks_to_test_out: Array<{ block_id: string; reason: string }>;
+  updated_estimated_weeks: number;
+  user_facing_message: string;
+}
+```
+
+### 9.7 `requestManualSkip`
+
+**Llamado por:** cliente si user solicita saltar bloque (cuando ya
+domina).
+
+```typescript
+interface RequestManualSkipRequest {
+  user_id: string;
+  block_id: string;
+}
+
+interface RequestManualSkipResponse {
+  allowed: boolean;
+  reason?: string;
+  test_out_required?: boolean;     // si necesita test-out primero
+}
+```
+
+**Reglas:**
+- Si user ya completó prerequisites: allowed sin test-out.
+- Si user no muestra mastery de la sub-skill: requerir test-out.
+
+---
+
+## 10. Edge cases (tests obligatorios)
+
+### 10.1 Generación
+
+1. **LLM devuelve `block_id` que no existe:** validation falla, retry
+   con feedback "estos block_ids no existen". Si vuelve a fallar:
+   fallback a template.
+2. **LLM no respeta prerequisites:** validation falla, retry. Fallback
+   a template.
+3. **Total de bloques fuera de rango (< 30 o > 50):** validation falla,
+   retry.
+4. **LLM devuelve más bloques que el deadline permite:** validation
+   advierte; aceptar pero marcar como `unrealistic_timing` para review.
+
+### 10.2 Adaptación
+
+5. **Job nocturno corre y un user es el único que matchea filtros pero
+   LLM falla:** skip ese user esa noche, retry día siguiente.
+6. **Diff intenta remover un bloque que el user está in_progress:** no
+   removerlo; ajustar diff antes de aplicar.
+7. **Diff intenta reorder cruzando boundaries de niveles:** rechazar;
+   reorder solo dentro de mismo nivel.
+
+### 10.3 Cambios de perfil
+
+8. **User cambia goal de "travel" a "job_interview":**
+   `student_profiles` emite `profile.updated` con
+   `significant_change = true`; AI Roadmap regenera con confirmación
+   del usuario.
+9. **User completa 50% del roadmap y cambia deadline:** ajusta
+   `estimated_completion_weeks` y reorder; no regenera.
+
+### 10.4 Concurrencia
+
+10. **Job nocturno y user submit attempt al mismo tiempo:**
+    transacción `FOR UPDATE` en `user_roadmaps.id`. Job espera; ambos
+    completan correctamente.
+11. **Multiple jobs nocturnos del mismo user (rare, bug):** idempotency
+    via `last_updated_at` check. Solo el primero updates.
+
+### 10.5 Bloques deprecados
+
+12. **Bloque marcado `archived = true` mientras user lo está
+    haciendo:** user completa la versión que ya tenía (snapshot).
+    Próximos roadmaps no lo incluyen.
+13. **Bloque deprecado y user nunca lo inició:** próxima generación lo
+    omite. Si era prerequisite de otros, sustituir o adjust.
+
+### 10.6 Errores extremos
+
+14. **User completa todo el roadmap:** generar mensaje "completaste tu
+    plan". Sugerir nuevo track. Emitir `roadmap.completed`.
+15. **User sin actividad durante 90 días vuelve:** roadmap se mantiene
+    pero al primer attempt aplica decay (pedagogical) y posible
+    regeneración.
+
+---
+
+## 11. Eventos
+
+### 11.1 Emitidos
+
+(Detalle en `cross-cutting/data-and-events.md` §5.8.)
+
+| Evento | Cuándo |
+|--------|--------|
+| `roadmap.generated` | Initial o definitive creado |
+| `roadmap.regenerated` | User cambió objetivo, regeneración completa |
+| `roadmap.updated` | Job nocturno aplicó diff |
+| `roadmap.completed` | User terminó todos los bloques del track |
+| `level.unlocked` | Nuevo nivel desbloqueado |
+| `level.completed` | Nivel completo |
+
+### 11.2 Consumidos
+
+| Evento | Acción |
+|--------|--------|
+| `block.completed` (de pedagogical) | Update `user_roadmaps.completed_blocks`, evaluar level.completed |
+| `block.mastered` (de pedagogical) | Misma acción + posible skip de similar |
+| `block.struggling_detected` (de pedagogical) | Insertar bloque de prerequisito o simplificación |
+| `subskill.regressed` (de pedagogical) | Considerar agregar refuerzo en próximo nightly |
+| `assessment.completed` (de student-profile) | Trigger `generateDefinitiveRoadmap` |
+| `profile.updated` (de student-profile) | Si `significant_change`: trigger `regenerateRoadmap` |
+| `user.cefr_changed` (de pedagogical) | Update `current_cefr` en roadmap; posible level skip |
+
+---
+
+## 12. Stack tecnológico
+
+(Resumen; detalle en `architecture/01-overview.md` y otros.)
+
+| Componente | Tecnología |
+|-----------|-----------|
+| Persistencia | Postgres (Supabase) |
+| Cache de bloques | Redis (Upstash), hit rate >95% |
+| Storage assets | Cloudflare R2 |
+| LLM generación | AI Gateway tasks `generate_*_roadmap`, `nightly_roadmap_update`, `generate_morning_message` |
+| Orquestación | Inngest cron + workflows |
+| Validación | Zod |
+| Observability | Sentry + PostHog |
+
+### 12.1 Costos del stack en escala
 
 | Componente | 1.000 users | 10.000 users | 100.000 users |
 |-----------|------------:|-------------:|--------------:|
 | Supabase Postgres | $25 | $25 | $400 |
-| Upstash Redis | $0 (free) | $10 | $80 |
+| Upstash Redis | $0 | $10 | $80 |
 | Cloudflare Workers | $5 | $5 | $30 |
 | Cloudflare R2 storage | $5 | $30 | $200 |
-| Inngest | $0 (free) | $20 | $50 |
+| Inngest | $0 | $20 | $50 |
 | AWS Athena | $5 | $20 | $80 |
 | Deepgram STT | $20 | $200 | $1.500 |
 | Azure Pronunciation | $30 | $300 | $0 (modelo propio) |
-| LLM APIs (todos los usos) | $30 | $200 | $1.000 |
-| Sentry + PostHog + BetterStack | $0 (free) | $50 | $200 |
+| LLM APIs | $30 | $200 | $1.000 |
+| Sentry + PostHog + BetterStack | $0 | $50 | $200 |
 | **Total mensual aprox.** | **$120** | **$860** | **$3.540** |
 
-A 100.000 usuarios pagos con ARPU mezclado de ~$3 USD/mes (aprox 78 pesos), revenue mensual es ~$300.000 USD. Costo de infra: $3.540 USD. Margen bruto: ~98%.
+### 12.2 Lo que NO se debe agregar al stack
 
-Estos números son optimistas pero ilustrativos: con buen control de costos, este stack escala saludablemente.
-
-### 8.4 Lo que NO se debe agregar al stack todavía
-
-- **Kubernetes**: overkill hasta que haya múltiples servicios y equipo de ops.
-- **Pinecone u otra vector DB managed**: pgvector cubre los casos iniciales gratis.
-- **Kafka**: Inngest events alcanza hasta volúmenes medios.
-- **Datadog**: Sentry + PostHog + Better Stack cubren todo lo necesario.
-- **GraphQL**: agregar complejidad sin beneficio claro a este tamaño.
-- **Microservicios**: monolito modular (el "monorepo" con servicios lógicos) es la respuesta correcta.
+- Kubernetes (overkill).
+- Pinecone u otra vector DB managed (pgvector cubre).
+- Kafka (Inngest events alcanza).
+- GraphQL (REST simple suficiente).
+- Microservicios (monolito modular).
 
 ---
 
-## 9. Plan de implementación incremental
+## 13. Plan de implementación
 
-### Sprint 1 (semana 1-2): biblioteca de bloques
-- Definir schema de `learning_blocks`.
-- Crear los primeros 50 bloques manualmente (con ayuda de Claude generando contenido) cubriendo el track Job Ready.
-- Loaders para poblar la base.
+### 13.1 Sprint 1 (semanas 1-2): Biblioteca
 
-### Sprint 2 (semana 3-4): onboarding + test inicial
-- UI del onboarding (5 preguntas).
-- Implementación del mini-test de 5 minutos.
-- Integración con Whisper para transcripción.
-- Storage de `user_profiles` con resultados del test.
+- Schema `learning_blocks` (en `content-creation-system`).
+- Crear primeros 50 bloques manualmente (track Job Ready).
+- Loaders para poblar.
 
-### Sprint 3 (semana 5-6): generación inicial del roadmap
-- Implementación del prompt y la llamada a Claude Haiku.
+### 13.2 Sprint 2 (semanas 3-4): Onboarding + test
+
+- UI onboarding (5 preguntas).
+- Mini-test 5 min.
+- Integration con AI Gateway tasks.
+- Storage de `student_profiles` con resultados.
+
+### 13.3 Sprint 3 (semanas 5-6): Generación inicial
+
+- Implementación de prompt y task `generate_initial_roadmap`.
 - Validación con Zod.
 - Persistencia en `user_roadmaps`.
-- UI básica de visualización del roadmap.
+- UI básica del roadmap.
 
-### Sprint 4 (semana 7-8): consumo y progreso
-- Endpoint "next block" que devuelve el siguiente bloque activo.
-- Tracking de progreso por bloque en `user_block_progress`.
-- Lógica de mastery: cuándo se considera completado.
-- Desbloqueo automático del siguiente nivel.
+### 13.4 Sprint 4 (semanas 7-8): Consumo y progreso
 
-### Sprint 5 (semana 9-10): job nocturno básico
-- Setup de Inngest + cron diario.
-- Pipeline de agregación SQL de eventos del día.
-- Reglas de filtrado de usuarios para re-análisis.
-- Loop de actualización con LLM batch.
+- `getDailyPlan` y `getNextBlocksForUser` (vía pedagogical).
+- Tracking de progreso.
+- Lógica de mastery.
+- Desbloqueo de niveles.
 
-### Sprint 6 (semana 11-12): insights humanizados
-- Generación de mensajes matutinos en batch.
-- Razones por bloque ("¿Por qué este ejercicio?").
-- Insight semanal de progreso.
-- UI para mostrar todos estos mensajes.
+### 13.5 Sprint 5 (semanas 9-10): Job nocturno
 
-Después de las 12 semanas, tenés el sistema completo funcionando. Los siguientes 3 meses son refinamiento, expansión de la biblioteca, y comienzo del trabajo en modelos propios para reemplazar APIs.
+- Setup Inngest + cron diario.
+- Pipeline de agregación SQL.
+- Reglas de filtrado de usuarios.
+- Loop de update con LLM batch.
 
----
+### 13.6 Sprint 6 (semanas 11-12): Insights humanizados
 
-## 10. Métricas y observabilidad
-
-### 10.1 Métricas técnicas a trackear
-
-- Latencia p50/p95/p99 de generación de roadmap inicial.
-- Tasa de validación exitosa de outputs de LLM (debe ser >98%).
-- Costo de IA por usuario por mes (alerta si >$0.10).
-- % de usuarios re-analizados por noche (debe estar entre 5% y 15%).
-- Hit rate de cache de la biblioteca de bloques (>95%).
-
-### 10.2 Métricas de producto a trackear
-
-- Tasa de completion del onboarding (drop-off por pregunta).
-- Tasa de usuarios que completan el primer bloque.
-- Tasa de usuarios que completan el primer nivel.
-- Tiempo promedio entre bloques.
-- NPS al completar primer nivel (señal temprana de PMF).
-- % de usuarios que llegan al nivel 3 (señal de tracción real).
-
-### 10.3 Alertas críticas
-
-- Costo de IA del día > 2x el promedio histórico.
-- Tasa de error en validación de roadmaps > 5%.
-- Latencia p95 de generación inicial > 10 segundos.
-- Cualquier usuario con costo individual > $1 en un día (indica abuso o bug).
+- Generación de mensajes matutinos batch.
+- Razones por bloque.
+- Insight semanal.
+- UI para mostrar todos.
 
 ---
 
-## 11. Decisiones abiertas
+## 14. Decisiones cerradas
 
-Decisiones que aún no están tomadas y requieren validación o investigación:
+### 14.1 User edita roadmap manualmente: **limitado** ✓
 
-- [ ] ¿Permitir que el usuario edite manualmente su roadmap (skip blocks, reorder)? Pros: agency. Contras: rompe la coherencia pedagógica.
-- [ ] ¿Tracks múltiples activos al mismo tiempo o uno solo? Empezar con uno solo para simplicidad, evaluar después.
-- [ ] ¿Cómo manejar usuarios que cambian de objetivo en medio del roadmap? ¿Se regenera entero o se mergea?
-- [ ] ¿Certificados de completitud de track? ¿En qué momento (al completar 100% o al lograr mastery promedio X)?
-- [ ] Política de re-evaluación: ¿se hace mini-test cada N semanas para recalibrar?
+**Permitido:**
+- Skip de bloque que ya domina (vía test-out).
+- Marcar bloque como "no me interesa" (skip soft).
+
+**No permitido:**
+- Reorder global del roadmap (rompe coherencia pedagógica).
+- Agregar bloques arbitrarios (no es biblioteca personalizable).
+
+**Razón:** balance entre autonomía y coherencia. Skip via test-out
+respeta el modelo de mastery.
+
+### 14.2 Tracks múltiples activos simultáneamente: **NO en MVP** ✓
+
+**Razón:** complejidad cognitiva para el usuario. UX más clara con
+un solo track activo. User puede cambiar de track cuando complete o
+abandone el actual. Reconsiderar año 2 con datos.
+
+### 14.3 Cambio de objetivo mid-roadmap: **regenerar con confirmación** ✓
+
+**Razón:**
+- Mergear sería confuso (un track Job Ready a medio + un track Travel
+  no tiene sentido).
+- Regenerar entero es más limpio.
+- Pedir confirmación del user respeta su agency.
+
+**Implementación:** detectar `significant_change` (objetivo distinto, o
+deadline cambio > 50%); UI prompt "¿Querés regenerar tu plan?". Si
+confirma: archive actual, generate nuevo.
+
+### 14.4 Certificados: **al completar 100% Y mastery promedio > 70%** ✓
+
+**Razón:** completar sin dominar no merece certificado. Threshold
+mantiene valor del certificado.
+
+**Implementación:** al `roadmap.completed` event, calcular mastery
+promedio del track. Si > 70%: emit `track_certified` event,
+`motivation-and-achievements` otorga el logro `track_complete` con
+flag `certified = true`.
+
+### 14.5 Re-evaluación periódica: **mini-test cada 4 semanas (Pro/Premium)** ✓
+
+(Coordinado con `student-profile-and-assessment.md` §7.2.)
+
+| Plan | Frecuencia | Profundidad |
+|------|-----------|-------------|
+| Básico | 8 semanas | mini-test 5 min |
+| Pro | 4 semanas | assessment intermedio 10 min |
+| Premium | 4 semanas | assessment completo 20 min |
+
+**Razón:** balance entre data fresca y fricción. Premium recibe
+assessment completo regularmente como diferenciador del plan.
 
 ---
 
-## 12. Referencias internas
+## 15. Métricas
 
-- `docs/business/plan_de_negocio.docx` — Plan de negocio general.
-- `docs/architecture/01-overview.md` — Arquitectura general (a crear).
-- `docs/architecture/02-sparks-system.md` — Sistema de tokens (a crear).
-- `docs/product/learning-blocks-taxonomy.md` — Taxonomía de la biblioteca (a crear).
-- `docs/decisions/ADR-XXX-llm-selection.md` — Decisión sobre proveedores LLM (a crear).
+### 15.1 Métricas técnicas
+
+| Métrica | Target |
+|---------|--------|
+| Latencia p95 generación inicial | < 10s |
+| Tasa de validación exitosa | > 98% |
+| Costo IA por usuario primer mes | < $0.10 |
+| % usuarios re-analizados por noche | 5–15% |
+| Hit rate cache de biblioteca | > 95% |
+
+### 15.2 Métricas de producto
+
+| Métrica | Target |
+|---------|--------|
+| Onboarding completion rate | > 85% |
+| Drop-off por pregunta del onboarding | < 5% por pregunta |
+| Usuarios que completan primer bloque | > 70% |
+| Usuarios que completan primer nivel | > 40% (D7) |
+| NPS post primer nivel | > 30 |
+| % usuarios al nivel 3 | > 25% (D30) |
+
+### 15.3 Alertas
+
+- Costo IA del día > 2x promedio: SEV-2.
+- Validation rate < 95%: SEV-2.
+- Latencia p95 > 15s: SEV-2.
+- User individual con costo > $1/día: review.
 
 ---
 
-*Documento vivo. Actualizar cuando se tomen decisiones nuevas o se aprenda de la implementación.*
+## 16. Referencias internas
+
+| Documento | Relación |
+|-----------|----------|
+| [`pedagogical-system.md`](pedagogical-system.md) | Mastery scoring; `getMasteryProfile`, `getNextBlocksForUser`, eventos consumidos. |
+| [`student-profile-and-assessment.md`](student-profile-and-assessment.md) | Profile y assessment results. |
+| [`content-creation-system.md`](content-creation-system.md) | Owner de `learning_blocks`. |
+| [`motivation-and-achievements.md`](motivation-and-achievements.md) | Consume eventos `level.*`, `roadmap.*`. |
+| [`../architecture/ai-gateway-strategy.md`](../architecture/ai-gateway-strategy.md) §4.2.4 | Tasks `generate_initial_roadmap`, `nightly_roadmap_update`. |
+| [`../architecture/notifications-system.md`](../architecture/notifications-system.md) | Recibe `morning_message` para push. |
+| [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) §5.8 | Eventos `roadmap.*`, `level.*`. |
+
+---
+
+*Documento vivo. Actualizar cuando se tomen decisiones nuevas o se
+aprenda de la implementación.*
