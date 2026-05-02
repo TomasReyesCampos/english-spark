@@ -1,55 +1,102 @@
 # Customer Support System
 
-> Sistema de soporte al usuario diseñado para escalar con un equipo
-> mínimo (idealmente cero personas full-time hasta volúmenes altos).
-> Combina self-service, IA, y escalación humana solo cuando necesaria.
+> Sistema de soporte al usuario diseñado para escalar con equipo
+> mínimo. Combina self-service, IA, y escalación humana solo cuando
+> necesaria.
 
-**Estado:** Diseño v1.0
+**Estado:** Diseño v1.1 (profundizado para implementación)
 **Última actualización:** 2026-04
 **Owner:** —
+**Audiencia primaria:** agente AI implementador.
 **Alcance:** Sistema completo
 
 ---
 
-## 1. Filosofía de soporte
+## 0. Cómo leer este documento
 
-### 1.1 El problema clásico
-
-Las apps consumer suelen abordar soporte de dos maneras malas:
-
-**Opción A:** ignorar el problema hasta que es crítico. Resultado: rage
-en App Store, churn alto, costos de adquisición desperdiciados.
-
-**Opción B:** contratar equipo grande de soporte temprano. Resultado:
-costos altos, no escalable, distrae del producto.
-
-Para un dev solo trabajando con IA, ninguna opción funciona.
-
-### 1.2 Filosofía adoptada
-
-**Self-service por default:** la mayoría de usuarios prefiere resolver
-solos si la documentación está disponible.
-
-**IA como first responder:** chatbot inteligente con contexto del usuario
-resuelve el 60-80% de consultas.
-
-**Humano solo en casos críticos:** problemas técnicos complejos, disputas
-de pagos, casos sensibles.
-
-**Prevención > resolución:** invertir en evitar problemas (UX clara,
-mensajes proactivos) reduce volumen de soporte.
-
-**Cada ticket es feedback de producto:** el soporte no es un costo, es
-una fuente de mejora del producto.
+- §1 establece **filosofía**.
+- §2 cubre **boundaries**.
+- §3 cubre **niveles de soporte** (escalación).
+- §4 cubre **Nivel 0: Self-Service**.
+- §5 cubre **Nivel 1: AI Assistant**.
+- §6 cubre **Nivel 2: Human Async**.
+- §7 cubre **Nivel 3: Critical/Priority**.
+- §8 cubre **schemas Postgres**.
+- §9 cubre **API contracts**.
+- §10 enumera **edge cases**.
+- §11 cubre **eventos**.
+- §12 cubre **casos especiales** (refunds, account deletion, GDPR).
+- §13 cubre **feedback as product input**.
+- §14 cubre **decisiones cerradas**.
 
 ---
 
-## 2. Niveles de soporte (escalación)
+## 1. Filosofía
 
-### 2.1 Estructura en niveles
+### 1.1 Principios
+
+**Self-service por default:** la mayoría prefiere resolver solo si la
+documentación está disponible.
+
+**IA como first responder:** chatbot inteligente con contexto del user
+resuelve 60-80% de consultas.
+
+**Humano solo en casos críticos:** problemas técnicos complejos,
+disputas de pagos, casos sensibles.
+
+**Prevención > resolución:** invertir en evitar problemas (UX clara,
+mensajes proactivos) reduce volumen.
+
+**Cada ticket es feedback:** no es costo, es fuente de mejora.
+
+### 1.2 Por qué este modelo funciona para dev solo
+
+- Niveles 0 y 1 escalan infinitamente: sin trabajo humano marginal.
+- Nivel 2 absorbe casos manejables: revisión asíncrona compatible con
+  dev solo.
+- Nivel 3 es excepcional: pocos casos, máxima atención.
+- Sistema aprende: patrones del Nivel 2 informan mejoras del Nivel 1,
+  reduciendo escalación en el tiempo.
+
+---
+
+## 2. Boundaries
+
+### 2.1 Es responsable de
+
+- Help Center (artículos, FAQs).
+- Status page público.
+- AI Assistant con contexto del user.
+- Sistema de tickets (creación, tracking, resolución).
+- Categorización y reportes.
+- Apelaciones de fraude (recibir; resolución es admin).
+- Refunds dentro de policy auto, manuales fuera de policy.
+
+### 2.2 NO es responsable de
+
+- **Account recovery completo:** delega a `auth-system`.
+- **Aplicación de restricciones de fraude:** delega a `anti-fraud-system`.
+- **Refunds de pagos directos:** Stripe/RevenueCat manejan refunds
+  según su política; este sistema solicita.
+- **Publicación de incidentes:** delega a `ops/incidents-runbook`.
+
+### 2.3 Tensiones
+
+| Tensión | Resolución |
+|---------|-----------|
+| AI Assistant promete refund que no se puede dar | Prompt explícito "nunca prometas refunds sin verificar"; escalation_needed flag |
+| User quiere account deletion via support | Delega a auth-system flow; support solo guía |
+| Bug crítico afecta a muchos | Comms proactiva via status page + email masivo (no via tickets individuales) |
+| User abusivo que consume tiempo de soporte | Anti-fraud aplica restriction; soporte cierra tickets |
+
+---
+
+## 3. Niveles de soporte
+
+### 3.1 Estructura
 
 ```
-NIVEL 0: Self-Service (60-70% de casos)
+NIVEL 0: Self-Service (60-70% objetivo)
 ├── Help Center con artículos
 ├── In-app FAQ contextual
 ├── Tooltips y explicaciones inline
@@ -57,15 +104,15 @@ NIVEL 0: Self-Service (60-70% de casos)
 
          ↓ (si no resuelve)
 
-NIVEL 1: AI Assistant (20-30% de casos)
-├── Chatbot con contexto del usuario
+NIVEL 1: AI Assistant (20-30% objetivo)
+├── Chatbot con contexto del user
 ├── Respuestas a consultas comunes
 ├── Triage para escalación
 └── Manejo de problemas estandarizados
 
          ↓ (si no resuelve)
 
-NIVEL 2: Human Async (5-10% de casos)
+NIVEL 2: Human Async (5-10%)
 ├── Email/in-app messaging
 ├── Respuesta en 24-48h
 ├── Casos complejos pero no urgentes
@@ -73,32 +120,23 @@ NIVEL 2: Human Async (5-10% de casos)
 
          ↓ (si es crítico)
 
-NIVEL 3: Human Priority (<2% de casos)
+NIVEL 3: Human Priority (<2%)
 ├── Premium customers
 ├── Bugs críticos / pérdida de datos
 ├── Disputas de pagos
 └── Issues de seguridad/privacidad
 ```
 
-### 2.2 Por qué este modelo funciona para dev solo
-
-- **Nivel 0 y 1 escalan infinitamente:** sin trabajo humano marginal.
-- **Nivel 2 absorbe casos manejables:** revisión asíncrona compatible
-  con dev solo.
-- **Nivel 3 es excepcional:** pocos casos, máxima atención.
-- **El sistema aprende:** patrones del Nivel 2 informan mejoras del
-  Nivel 1, reduciendo escalación en el tiempo.
-
 ---
 
-## 3. Nivel 0: Self-Service
+## 4. Nivel 0: Self-Service
 
-### 3.1 Help Center
+### 4.1 Help Center
 
-**Plataforma sugerida:** GitBook, Notion público, o markdown estático en
-el dominio. Para MVP, Notion público es lo más simple.
+**Plataforma:** Notion público para MVP. Migrar a GitBook si volumen lo
+justifica.
 
-**Estructura inicial recomendada:**
+#### Estructura inicial
 
 ```
 Help Center
@@ -140,80 +178,56 @@ Help Center
     └── ¿Cómo borro mis datos?
 ```
 
-### 3.2 Cobertura inicial
+### 4.2 Cobertura inicial
 
-Para MVP, cubrir el 80/20: los temas que generarán 80% de las consultas.
-
-**Prioridad alta (crítico tener desde el día 1):**
+**Prioridad alta (crítico desde Day 1):**
 - Cómo funciona el free trial.
-- Cómo cancelar suscripción (legalmente requerido en muchas jurisdicciones).
-- Cómo eliminar cuenta (requerido por App Store).
+- Cómo cancelar suscripción (legalmente requerido).
+- Cómo eliminar cuenta (App Store requirement).
 - Métodos de pago.
 - Recuperación de cuenta.
 
 **Prioridad media (semanas 1-4):**
-- Sistema de Sparks explicado.
+- Sistema de Sparks.
 - Roadmap y assessment.
 - Logros.
 
-**Prioridad baja (después de feedback real):**
-- Edge cases específicos que aparezcan.
+**Prioridad baja (post feedback real):**
+- Edge cases que aparezcan.
 
-### 3.3 In-app FAQ contextual
+### 4.3 In-app FAQ contextual
 
-Cada pantalla principal de la app tiene un ícono "?" que abre FAQ
-relevante a esa pantalla.
+Cada pantalla principal tiene "?" que abre FAQ relevante. Reduce
+escalación porque user obtiene respuesta donde tiene la duda.
 
-Ejemplo: en la pantalla de roadmap, "?" muestra:
-- ¿Cómo se generó mi roadmap?
-- ¿Por qué algunos bloques están bloqueados?
-- ¿Puedo saltar bloques?
-- ¿Qué pasa si no completo en el tiempo estimado?
+### 4.4 Status page
 
-Esto reduce escalación porque el usuario obtiene respuesta justo donde
-tiene la duda.
+URL pública (ej: `status.<dominio>`). Stack: Better Stack o Atlassian
+Statuspage (tier gratuito).
 
-### 3.4 Tooltips y explicaciones inline
-
-Para conceptos importantes (Sparks, mastery, niveles), tooltips
-explicativos al hover/tap del primer encuentro.
-
-```
-🎯 ¿Qué son los Sparks?
-Los Sparks son la energía que usás para conversaciones 1 a 1 con la IA
-y otras funciones premium.
-[Aprender más]
-```
-
-### 3.5 Status page
-
-Página pública (uptime.example.com o similar) que muestra:
-- Status actual de servicios (app, API, IA, pagos).
+Muestra:
+- Status actual (app, API, IA, pagos).
 - Incidentes pasados.
 - Mantenimientos programados.
 
-**Stack sugerido:** Better Stack o Atlassian Statuspage. Tier gratuito
-disponible.
-
-Reduce tickets cuando hay outages: usuarios verifican status antes de
-contactar.
+Reduce tickets cuando hay outages.
 
 ---
 
-## 4. Nivel 1: AI Assistant
+## 5. Nivel 1: AI Assistant
 
-### 4.1 Concepto
+### 5.1 Concepto
 
-Chatbot accesible desde la app y el Help Center que:
-- Tiene contexto completo del usuario que habla.
+Chatbot accesible desde la app y Help Center que:
+- Tiene contexto completo del user.
 - Conoce el producto a fondo.
 - Resuelve consultas comunes con respuesta inmediata.
 - Escala a humano solo cuando no puede resolver.
 
-### 4.2 Arquitectura
+### 5.2 Arquitectura
 
 ```
-Usuario tiene una pregunta
+User tiene una pregunta
          ↓
 Abre AI Assistant (in-app o web)
          ↓
@@ -222,26 +236,26 @@ Sistema captura contexto:
 - Pantalla actual cuando abrió chat
 - Errores recientes en su sesión
          ↓
-Pregunta + contexto → LLM con knowledge base
+Pregunta + contexto → AI Gateway task 'ai_assistant_response'
          ↓
 LLM clasifica:
 - ¿Puedo responder con knowledge base? → Responde
 - ¿Es problema técnico identificable? → Diagnóstico + sugiere acción
-- ¿Requiere humano? → Crea ticket + asegura al usuario
+- ¿Requiere humano? → Crea ticket + asegura al user
 - ¿Es crítico? → Escala con prioridad alta
          ↓
-Respuesta al usuario o ticket creado
+Respuesta al user o ticket creado
 ```
 
-### 4.3 Knowledge base del AI
+### 5.3 Knowledge base del AI
 
 El AI Assistant accede a:
 
-**Datos del usuario (en contexto):**
-- Perfil, plan, balance de Sparks.
+**Datos del user (en context):**
+- Perfil, plan, balance Sparks.
 - Historial de pagos, status de suscripción.
 - Roadmap actual, progreso.
-- Tickets previos del usuario.
+- Tickets previos.
 
 **Documentación del producto:**
 - Todos los artículos del Help Center.
@@ -253,25 +267,15 @@ El AI Assistant accede a:
 - Incidentes recientes.
 - Bugs conocidos con workarounds.
 
-### 4.4 Implementación
+### 5.4 Prompt del AI Assistant
 
-**Stack recomendado:**
-
-| Componente | Tecnología |
-|-----------|-----------|
-| LLM | Claude Haiku (costo bajo, suficiente calidad) |
-| Knowledge base | Postgres + pgvector para búsqueda semántica |
-| Frontend chat | Componente React Native nativo + web |
-| Logging | Tabla `support_conversations` |
-| Escalation | Trigger a sistema de tickets |
-
-**Prompt del AI Assistant:**
+(Task `ai_assistant_response` en AI Gateway, ver §4.2.8.)
 
 ```
-Sos un agente de soporte de [App Name], una app de aprendizaje de inglés
-para hispanohablantes.
+Sos un agente de soporte de [App Name], una app de aprendizaje de
+inglés para hispanohablantes.
 
-DATOS DEL USUARIO QUE TE CONSULTA:
+DATOS DEL USER:
 - Plan: {{user.plan}}
 - Sparks balance: {{user.sparks_balance}}
 - Trial status: {{user.trial_status}}
@@ -287,37 +291,45 @@ KNOWLEDGE BASE DISPONIBLE:
 {{relevant_articles_from_search}}
 
 INSTRUCCIONES:
-1. Sé cálido pero conciso (máximo 3 párrafos por respuesta).
-2. Usa el nombre del usuario si lo tenés.
-3. Si la pregunta tiene respuesta en knowledge base, respondé directamente.
-4. Si requiere acción del usuario en la app, dale pasos numerados claros.
-5. Si requiere acción que solo nosotros podemos tomar (refund, edit cuenta),
-   creá ticket con CREATE_TICKET tag.
+1. Sé cálido pero conciso (max 3 párrafos por respuesta).
+2. Usá el nombre del user si lo tenés.
+3. Si la pregunta tiene respuesta en knowledge base, respondé directo.
+4. Si requiere acción del user en la app, pasos numerados claros.
+5. Si requiere acción solo nosotros podemos tomar (refund, edit
+   cuenta), creá ticket con CREATE_TICKET tag.
 6. Si es bug crítico (pérdida de datos, no puede acceder, pagó pero no
    recibió), escalá con PRIORITY_HIGH tag.
-7. Nunca prometas cosas que no podés cumplir (descuentos, reembolsos sin verificar).
+7. NUNCA prometas cosas que no podés cumplir (descuentos, refunds sin
+   verificar).
 8. Si no estás seguro, decí "déjame escalar esto a nuestro equipo".
 
 Respondé en español neutro latinoamericano.
+
+DEVOLVÉ JSON:
+{
+  "response": "...",
+  "escalation_needed": boolean,
+  "escalation_reason": "...",  // si escalation_needed
+  "create_ticket": boolean,
+  "ticket_priority": "low" | "normal" | "high" | "critical"  // si create_ticket
+}
 ```
 
-### 4.5 Escalación inteligente
+### 5.5 Escalación inteligente
 
-El AI no resuelve todo. Sabe cuándo escalar:
-
-**Escalación inmediata (Nivel 3):**
+**Inmediata (Nivel 3, priority `critical`):**
 - Pérdida de datos.
-- Usuario no puede acceder a su cuenta.
+- User no puede acceder a su cuenta.
 - Pago realizado pero plan no activado.
-- Cualquier mención de "vulneración", "hackeo", "datos robados".
-- Problemas legales o regulatorios.
+- Mención de "vulneración", "hackeo", "datos robados".
+- Issues legales o regulatorios.
 
-**Escalación normal (Nivel 2):**
+**Normal (Nivel 2, priority `high` o `normal`):**
 - Solicitud de refund parcial o total.
 - Cambio de plan complejo.
 - Bug que el AI no puede explicar.
 - Quejas sobre contenido específico.
-- Casos que el AI no resolvió en 3 turnos.
+- Casos no resueltos en 3 turnos del AI.
 
 **Sin escalación (resueltos por AI):**
 - Preguntas de "cómo hacer X".
@@ -325,48 +337,46 @@ El AI no resuelve todo. Sabe cuándo escalar:
 - Problemas con workarounds conocidos.
 - Información sobre planes y pricing.
 
-### 4.6 Costos del AI Assistant
+### 5.6 Costos
 
 Por conversación promedio:
 - 5-10 mensajes intercambiados.
-- ~2.000 tokens en context, ~500 tokens en respuesta.
-- Costo con Claude Haiku: ~$0.003 por conversación.
+- ~2.000 tokens en context, ~500 en response.
+- Costo con Haiku: ~$0.003 por conversación.
 
 A 1.000 conversaciones diarias = $90/mes. Despreciable comparado con
 costo de personal humano equivalente.
 
 ---
 
-## 5. Nivel 2: Human Async Support
+## 6. Nivel 2: Human Async
 
-### 5.1 Cuándo se usa
+### 6.1 Cuándo se usa
 
 - AI Assistant escaló el caso.
-- Usuario solicita explícitamente "hablar con persona".
+- User solicita explícitamente "hablar con persona".
 - Casos que requieren acción manual (refund, cambio de cuenta).
 
-### 5.2 Stack recomendado
+### 6.2 Stack
 
 **MVP (dev solo):**
 - Email forwarding a tu email personal.
-- Sistema simple de tracking en Notion o Linear.
-- Respuesta en 24-48 horas.
+- Tracking en Notion o Linear.
+- Respuesta en 24-48h.
 
 **Crecimiento (con primer hire o freelancer):**
 - Helpscout o Intercom (~$25-50/mes).
-- Tier gratuito de Crisp para empezar.
-- Respuesta en 12-24 horas.
+- Respuesta en 12-24h.
 
 **Escala (>1.000 tickets/mes):**
 - Helpscout o Zendesk full.
 - Equipo dedicado.
 - Respuesta en horas.
 
-### 5.3 Templates de respuesta
-
-Para casos repetitivos, templates pre-escritos que el humano ajusta:
+### 6.3 Templates de respuesta
 
 **Refund Request - dentro de política:**
+
 ```
 Hola [Nombre],
 
@@ -384,6 +394,7 @@ Saludos,
 ```
 
 **Refund Request - fuera de política:**
+
 ```
 Hola [Nombre],
 
@@ -400,6 +411,7 @@ Saludos,
 ```
 
 **Bug Report:**
+
 ```
 Hola [Nombre],
 
@@ -415,217 +427,415 @@ Saludos,
 [Nombre]
 ```
 
-### 5.4 Tracking de tickets
+### 6.4 Métricas Nivel 2
 
-Schema mínimo para tracking:
-
-```sql
-CREATE TABLE support_tickets (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID REFERENCES users(id),
-  email           TEXT,                -- por si no es usuario
-  subject         TEXT NOT NULL,
-  description     TEXT NOT NULL,
-  category        TEXT,                -- 'billing', 'bug', 'feature_request'
-  priority        TEXT NOT NULL DEFAULT 'normal'
-                  CHECK (priority IN ('low', 'normal', 'high', 'critical')),
-  status          TEXT NOT NULL DEFAULT 'open'
-                  CHECK (status IN ('open', 'in_progress', 'waiting_user', 'resolved', 'closed')),
-  source          TEXT,                -- 'ai_escalation', 'direct_email', 'in_app'
-  created_at      TIMESTAMPTZ DEFAULT now(),
-  resolved_at     TIMESTAMPTZ,
-  resolution_notes TEXT
-);
-
-CREATE TABLE ticket_messages (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  ticket_id       UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
-  author          TEXT NOT NULL,       -- user_id, 'ai', 'staff:name'
-  content         TEXT NOT NULL,
-  internal        BOOLEAN DEFAULT false, -- nota interna no visible al usuario
-  created_at      TIMESTAMPTZ DEFAULT now()
-);
-```
-
-### 5.5 Métricas Nivel 2
-
-- Tiempo de primera respuesta (target: <24h).
-- Tiempo de resolución (target: <72h promedio).
+- Tiempo de primera respuesta: < 24h.
+- Tiempo de resolución: < 72h promedio.
 - Customer Satisfaction Score (CSAT) post-resolución.
 - % de tickets resueltos en primera respuesta.
 
 ---
 
-## 6. Nivel 3: Critical / Priority
+## 7. Nivel 3: Critical / Priority
 
-### 6.1 Definición de "crítico"
+### 7.1 Definición de "crítico"
 
-- Pérdida de datos del usuario.
+- Pérdida de datos del user.
 - Cuenta comprometida (security).
 - Pagó pero no recibió plan.
 - No puede acceder a su cuenta.
 - Issues legales/regulatorios.
 - Premium customer con cualquier problema.
 
-### 6.2 SLA
+### 7.2 SLA
 
-- Primera respuesta: <2 horas en horario hábil.
-- Resolución: depende del caso, pero comunicación cada 24h mínimo.
+- Primera respuesta: < 2h en horario hábil.
+- Resolución: depende del caso, comunicación cada 24h mínimo.
 
-### 6.3 Procesos especiales
+### 7.3 Procesos especiales
 
 **Para data loss:**
 - Backup recovery process documentado.
-- Comunicación honesta con el usuario.
-- Compensación apropiada (Sparks bonus, mes gratis, etc.).
+- Comunicación honesta con el user.
+- Compensación apropiada (Sparks bonus, mes gratis).
 
 **Para payment issues:**
 - Verificación con RevenueCat/Stripe directamente.
-- Sin demoras: si pagó, dar plan inmediatamente, debug después.
+- Sin demoras: si pagó, dar plan inmediato, debug después.
 
 **Para security:**
 - Forzar password reset.
-- Notificar al usuario sobre actividad sospechosa.
+- Notificar al user sobre actividad sospechosa.
 - Auditoría de accesos.
 - Posible engagement de servicios externos si hay breach.
 
 ---
 
-## 7. Feedback as product input
+## 8. Schemas Postgres
 
-### 7.1 El soporte como fuente de información
+### 8.1 Tabla `support_tickets`
 
-Cada ticket es data sobre:
-- Bugs no detectados.
-- UX confusa que genera consultas.
-- Features faltantes solicitadas frecuentemente.
-- Tendencias del mercado y competencia.
+```sql
+CREATE TABLE support_tickets (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
+  email           TEXT,                            -- por si no es user
+  subject         TEXT NOT NULL,
+  description     TEXT NOT NULL,
+  category        TEXT NOT NULL CHECK (category IN (
+                    'billing', 'technical', 'account', 'product_feedback',
+                    'bug_report', 'feature_request', 'fraud_appeal', 'other'
+                  )),
+  subcategory     TEXT,
+  priority        TEXT NOT NULL DEFAULT 'normal'
+                  CHECK (priority IN ('low', 'normal', 'high', 'critical')),
+  status          TEXT NOT NULL DEFAULT 'open'
+                  CHECK (status IN (
+                    'open', 'in_progress', 'waiting_user', 'resolved', 'closed'
+                  )),
+  source          TEXT NOT NULL CHECK (source IN (
+                    'ai_escalation', 'direct_email', 'in_app', 'web_form'
+                  )),
+  assigned_to     TEXT,                            -- staff id
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at     TIMESTAMPTZ,
+  closed_at       TIMESTAMPTZ,
+  resolution_notes TEXT,
+  csat_score      INT CHECK (csat_score BETWEEN 1 AND 5),
+  csat_comment    TEXT
+);
 
-### 7.2 Categorización y agregación
-
-Todos los tickets se clasifican en categorías:
-
+CREATE INDEX idx_tickets_user_status
+  ON support_tickets(user_id, status)
+  WHERE user_id IS NOT NULL;
+CREATE INDEX idx_tickets_open
+  ON support_tickets(priority, created_at)
+  WHERE status IN ('open', 'in_progress');
+CREATE INDEX idx_tickets_category
+  ON support_tickets(category, created_at DESC);
 ```
-Category Tree:
-├── Billing
-│   ├── refund_request
-│   ├── plan_change
-│   ├── payment_failed
-│   └── billing_dispute
-├── Technical
-│   ├── app_crash
-│   ├── audio_issue
-│   ├── ai_conversation_bug
-│   └── notifications_not_working
-├── Account
-│   ├── login_problem
-│   ├── account_deletion
-│   └── data_export
-├── Product Feedback
-│   ├── feature_request
-│   ├── content_quality
-│   └── difficulty_complaint
-└── Other
+
+### 8.2 Tabla `ticket_messages`
+
+```sql
+CREATE TABLE ticket_messages (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id       UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  author          TEXT NOT NULL,                   -- user_id, 'ai', 'staff:<name>'
+  author_type     TEXT NOT NULL CHECK (author_type IN ('user', 'ai', 'staff')),
+  content         TEXT NOT NULL,
+  internal        BOOLEAN NOT NULL DEFAULT false,  -- nota interna no visible al user
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_ticket_messages_ticket
+  ON ticket_messages(ticket_id, created_at);
 ```
 
-### 7.3 Reportes mensuales
+### 8.3 Tabla `ai_assistant_conversations`
 
-Análisis mensual del soporte:
+```sql
+CREATE TABLE ai_assistant_conversations (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ended_at        TIMESTAMPTZ,
+  message_count   INT NOT NULL DEFAULT 0,
+  resolved_by_ai  BOOLEAN NOT NULL DEFAULT false,
+  escalated_to_ticket_id UUID REFERENCES support_tickets(id),
+  total_tokens    INT,
+  total_cost_usd  NUMERIC(10,6),
+  user_satisfaction INT CHECK (user_satisfaction BETWEEN 1 AND 5)
+);
 
-- Top 10 categorías por volumen.
-- Trending issues (problemas que crecieron mes a mes).
-- Issues nuevos que no existían antes.
-- Tickets que tomaron más tiempo (oportunidades de mejora).
-- Feature requests más solicitados.
+CREATE INDEX idx_ai_convs_user
+  ON ai_assistant_conversations(user_id, started_at DESC);
+```
 
-Este reporte va al backlog del producto.
+### 8.4 Tabla `ai_assistant_messages`
 
-### 7.4 Conversión de tickets a mejoras
-
-Pipeline:
-
-1. Ticket clasificado.
-2. Si la categoría supera umbral (ej: 10 tickets similares en mes), se
-   convierte en "issue" en GitHub.
-3. Issue se prioriza en backlog.
-4. Cuando se soluciona, se actualiza Help Center y AI knowledge base.
-5. Se notifica a usuarios afectados que reportaron.
+```sql
+CREATE TABLE ai_assistant_messages (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES ai_assistant_conversations(id) ON DELETE CASCADE,
+  role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content         TEXT NOT NULL,
+  metadata        JSONB DEFAULT '{}',              -- escalation_needed, create_ticket, etc.
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
 
 ---
 
-## 8. Comunicación proactiva
+## 9. API contracts
 
-### 8.1 Status updates durante incidents
+### 9.1 `startAiAssistantConversation`
 
-Si hay un outage o problema afectando muchos usuarios:
+**Llamado por:** cliente cuando user abre el AI Assistant.
 
-- Status page actualizada inmediatamente.
-- Banner en la app: "Estamos detectando problemas con X. Trabajando en
-  ello."
-- AI Assistant pre-cargado con info: si alguien pregunta sobre el problema,
-  responde con honestidad.
-- Email a usuarios afectados con explicación y compensación si aplica.
+```typescript
+interface StartAiAssistantConversationRequest {
+  user_id: string;
+  context: {
+    current_screen?: string;
+    last_action?: string;
+    recent_errors?: string[];
+  };
+}
 
-### 8.2 Maintenance windows
+interface StartAiAssistantConversationResponse {
+  conversation_id: string;
+  greeting_message: string;        // ej: "Hola María, ¿en qué puedo ayudarte?"
+}
+```
 
-- Aviso 48h antes en la app.
-- Email al inicio del mantenimiento.
-- Status page actualizada.
-- Idealmente, mantenimiento en horarios de baja actividad (3-5 AM hora local).
+### 9.2 `sendAiAssistantMessage`
 
-### 8.3 Post-mortems para incidents serios
+```typescript
+interface SendAiAssistantMessageRequest {
+  conversation_id: string;
+  message: string;
+}
 
-Para outages largos o issues que afectaron muchos usuarios:
+interface SendAiAssistantMessageResponse {
+  reply: string;
+  escalation_needed: boolean;
+  ticket_id?: string;              // si se creó ticket
+  ticket_priority?: 'low' | 'normal' | 'high' | 'critical';
+  message: 'awaiting_user' | 'escalated' | 'resolved';
+}
+```
 
-- Post mortem público (blog post o status page).
-- Explicación honesta de qué pasó.
-- Acciones tomadas para prevenir recurrencia.
-- Compensación a usuarios afectados.
+**Reglas:**
+- Llama AI Gateway task `ai_assistant_response`.
+- Si `create_ticket = true` en respuesta del LLM: crear ticket y
+  retornar `ticket_id`.
+- Si `escalation_needed = true` sin ticket: marcar conversación como
+  `pending_human_review`.
 
-Esto construye confianza incluso de eventos negativos.
+### 9.3 `endAiAssistantConversation`
+
+```typescript
+interface EndAiAssistantConversationRequest {
+  conversation_id: string;
+  user_satisfaction?: number;      // 1-5, opcional CSAT
+  resolved?: boolean;
+}
+```
+
+### 9.4 `createTicket`
+
+**Llamado por:** AI Assistant escaladas, formularios manuales,
+auth/anti-fraud para casos especiales.
+
+```typescript
+interface CreateTicketRequest {
+  user_id?: string;
+  email?: string;
+  subject: string;
+  description: string;
+  category: TicketCategory;
+  subcategory?: string;
+  priority?: 'low' | 'normal' | 'high' | 'critical';
+  source: 'ai_escalation' | 'direct_email' | 'in_app' | 'web_form';
+  initial_messages?: Array<{
+    author: string;
+    author_type: 'user' | 'ai';
+    content: string;
+  }>;
+}
+
+interface CreateTicketResponse {
+  ticket_id: string;
+  estimated_response_time_hours: number;
+}
+```
+
+### 9.5 `getMyTickets`
+
+```typescript
+interface GetMyTicketsRequest {
+  user_id: string;
+  status_filter?: TicketStatus;
+}
+
+interface GetMyTicketsResponse {
+  tickets: Array<{
+    id: string;
+    subject: string;
+    category: string;
+    status: TicketStatus;
+    priority: string;
+    created_at: string;
+    last_message_at: string;
+    last_message_excerpt: string;
+  }>;
+}
+```
+
+### 9.6 `getTicketDetail`
+
+```typescript
+interface GetTicketDetailRequest {
+  ticket_id: string;
+  user_id: string;                  // verificar ownership
+}
+
+interface GetTicketDetailResponse {
+  ticket: SupportTicket;
+  messages: TicketMessage[];        // sin internal=true
+}
+```
+
+### 9.7 `addUserMessageToTicket`
+
+```typescript
+interface AddUserMessageRequest {
+  ticket_id: string;
+  user_id: string;
+  content: string;
+}
+```
+
+### 9.8 `submitCsat`
+
+```typescript
+interface SubmitCsatRequest {
+  ticket_id: string;
+  user_id: string;
+  score: number;                    // 1-5
+  comment?: string;
+}
+```
+
+Reglas: solo si ticket `status = resolved`.
+
+### 9.9 Internal: admin endpoints
+
+- `assignTicket(ticket_id, staff_id)`.
+- `addStaffMessage(ticket_id, content, internal)`.
+- `updateTicketStatus(ticket_id, new_status, resolution_notes)`.
+- `bulkClassify(ticket_ids[], category)`.
 
 ---
 
-## 9. Casos especiales
+## 10. Edge cases (tests obligatorios)
 
-### 9.1 Refund policy
+### 10.1 AI Assistant
 
-**Política propuesta:**
+1. **User en mitad de conversación con AI cierra app:** conversation
+   se cierra automáticamente después de 30 min sin actividad.
+2. **AI da respuesta que valida promesa de refund:** prompt explícito
+   evita pero edge: detectar palabras "te devuelvo", "garantizamos
+   refund" en validation post-LLM; rechazar respuesta.
+3. **User envía mensaje en idioma distinto a español:** AI responde en
+   español neutro, ofrece "¿prefieres responderme en otro idioma?"
+   pero sin servicio formal en otros idiomas.
+4. **AI falla 3 veces consecutivas en una conversación:** auto-escalar
+   a Nivel 2 con mensaje "voy a pasar tu caso a una persona del
+   equipo".
+
+### 10.2 Tickets
+
+5. **Ticket creado por user borrado:** mantener con `user_id = NULL`,
+   email persiste para correspondencia.
+6. **User crea 5 tickets en 1 hora:** rate limit 3/hora; 4to+ rechazado
+   con mensaje "ya tenés N tickets abiertos, esperá nuestra
+   respuesta".
+7. **Ticket en `waiting_user` por > 14 días:** auto-cierre con flag
+   `auto_closed = true`. User puede reabrir.
+
+### 10.3 Refunds
+
+8. **User solicita refund Día 13 post-compra:** dentro de policy 14d,
+   procesar.
+9. **User solicita refund Día 15:** fuera de policy. Templates de
+   respuesta con alternativas.
+10. **User compró pack hace 2 meses, consumió 50%, pide refund:** caso
+    por caso. Default: no.
+
+### 10.4 Account issues
+
+11. **User report account compromised:** Nivel 3 inmediato. Force
+    password reset + audit log.
+12. **User no puede recuperar email/SSO:** verificación de pagos
+    previos como prueba; manual recovery via support.
+
+### 10.5 Concurrencia
+
+13. **Staff y user editan ticket simultáneamente:** optimistic locking
+    via `updated_at`.
+
+---
+
+## 11. Eventos
+
+### 11.1 Emitidos
+
+(Detalle en `cross-cutting/data-and-events.md` §5.10.)
+
+| Evento | Cuándo |
+|--------|--------|
+| `ticket.created` | Nuevo ticket |
+| `ticket.assigned` | Staff toma el ticket |
+| `ticket.message_added` | Nueva mensaje en conversación |
+| `ticket.resolved` | Marcado resolved |
+| `ticket.csat_submitted` | User dio CSAT |
+| `ai_assistant.conversation_started` | User abrió chat |
+| `ai_assistant.conversation_resolved` | AI resolvió sin escalation |
+| `ai_assistant.escalated` | AI escaló a humano |
+
+### 11.2 Consumidos
+
+| Evento | Acción |
+|--------|--------|
+| `restriction.applied` (anti-fraud) | Crear ticket auto si user pidió apelación |
+| `payment.failed` (sparks) | Si fallo crítico (subscription cancelled), crear ticket |
+| `incident.declared` (ops, futuro) | Update status page + banner in-app |
+
+---
+
+## 12. Casos especiales
+
+### 12.1 Refund policy
+
+(De `business/legal-compliance.md` §5.1.)
 
 - 14 días desde la compra: refund completo, sin preguntas.
-- Después de 14 días: caso por caso, default es no refund.
-- Sparks consumidos: nunca reembolsables (servicio prestado).
-- Cancelación: efectiva al final del ciclo actual, sin pro-rateo.
+- Después de 14 días: caso por caso, default no.
+- Sparks consumidos: nunca reembolsables.
+- Cancelación: efectiva al fin del ciclo, sin pro-rateo.
+- App Store/Play Store: sus políticas (usualmente más generosas);
+  no podemos override.
 
-**En App Store/Play Store:** las stores manejan refunds según sus políticas
-(usualmente más generosas), nosotros no podemos override.
+### 12.2 Account deletion
 
-### 9.2 Account deletion (legal requirement)
+(Detalle en `architecture/authentication-system.md` §13.)
 
-Apple y Google exigen permitir borrado de cuenta desde la app.
+Soporte solo guía al user al flow self-service. Si flow falla por bug:
+escalation a Nivel 3.
 
-Flujo claro y obligatorio (ya documentado en authentication-system.md):
-1. Settings → Eliminar cuenta.
-2. Confirmación con explicación.
-3. Período de gracia 30 días (con opción de cancelar).
-4. Hard delete después.
+### 12.3 GDPR / Privacy requests
 
-### 9.3 GDPR / Privacy requests
+User puede solicitar:
+- **Right to access:** export en JSON desde Settings (self-service).
+- **Right to erasure:** account deletion (self-service).
+- **Right to portability:** export en formato estándar (mismo).
+- **Right to rectification:** UI para editar; campos no editables vía
+  email a privacy@.
 
-Para usuarios europeos o por regulaciones latinoamericanas:
+Si user contacta `privacy@<dominio>` con request formal:
+- Acuse de recibo en 24h.
+- Verificación de identidad (responder desde email registrado).
+- Resolución en < 30 días (GDPR requirement).
+- Log interno.
 
-- Right to access: export de todos sus datos en JSON.
-- Right to erasure: borrado completo.
-- Right to portability: datos en formato estándar.
+### 12.4 Abusive behavior
 
-Implementar como features self-service en settings.
-
-### 9.4 Abusive behavior
-
-Si un usuario:
+Si user:
 - Insulta al equipo de soporte.
 - Comparte cuenta múltiples veces.
-- Intenta gaming del sistema (cuentas falsas, etc.).
+- Intenta gaming del sistema.
 
 Política:
 - Primer caso: warning amigable.
@@ -636,95 +846,173 @@ Documentar todo para casos legales eventuales.
 
 ---
 
-## 10. Plan de implementación
+## 13. Feedback as product input
 
-### 10.1 Fase 0: Antes del MVP (semana -1)
+### 13.1 Categorización
 
-- Crear Help Center inicial con artículos críticos.
-- Crear status page.
-- Configurar email de soporte.
-- Definir templates iniciales de respuesta.
+Tree de categorías:
 
-### 10.2 Fase 1: MVP (meses 0-3)
+```
+billing/
+├── refund_request
+├── plan_change
+├── payment_failed
+└── billing_dispute
+technical/
+├── app_crash
+├── audio_issue
+├── ai_conversation_bug
+└── notifications_not_working
+account/
+├── login_problem
+├── account_deletion
+└── data_export
+product_feedback/
+├── feature_request
+├── content_quality
+└── difficulty_complaint
+other/
+```
+
+### 13.2 Reportes mensuales
+
+Cada mes:
+- Top 10 categorías por volumen.
+- Trending issues (problemas que crecieron mes a mes).
+- Issues nuevos.
+- Tickets que tomaron más tiempo (oportunidades de mejora).
+- Feature requests más solicitados.
+
+Reporte va al backlog del producto.
+
+### 13.3 Conversión de tickets a mejoras
+
+Pipeline:
+1. Ticket clasificado.
+2. Si categoría supera umbral (ej: 10 similares en mes), convertir a
+   "issue" en GitHub.
+3. Issue se prioriza en backlog.
+4. Cuando se soluciona, actualizar Help Center y AI knowledge base.
+5. Notificar a users afectados.
+
+---
+
+## 14. Decisiones cerradas
+
+### 14.1 Soporte 24/7 con AI o limitado a horario laboral con humano:
+**AI 24/7, humano horario hábil** ✓
+
+**Razón:** AI escala sin marginal cost; humano fuera de hábil tiene
+ROI bajo. Casos críticos pueden esperar 8-12h hasta hábil siguiente
+en mayoría.
+
+### 14.2 Foro o Discord comunitario: **Post-MVP** ✓
+
+**Razón:** comunidad requiere moderación constante; sin tracción
+suficiente, foro vacío daña marca. Reconsiderar año 2.
+
+### 14.3 Programa "power users" que ayudan con incentivos: **NO en
+MVP** ✓
+
+**Razón:** complejidad de governance + riesgo de calidad
+inconsistente. Reconsiderar post-validation.
+
+### 14.4 Soporte por WhatsApp: **NO en MVP** ✓
+
+**Razón:** mismo razonamiento que para notifications (costo + setup
+de Meta). Reconsiderar con criterios de §14.1 de notifications-system.
+
+### 14.5 Política de refunds más generosa para users long-term: **SÍ
+case-by-case, no automático** ✓
+
+**Razón:** balance entre fidelización y abuso. Staff puede otorgar
+refund extendido si user tiene > 6 meses activos y caso lo justifica.
+Documentar como excepción.
+
+---
+
+## 15. Plan de implementación
+
+### 15.1 Fase 0: Antes del MVP
+
+- [ ] Help Center inicial con artículos críticos.
+- [ ] Status page configurada.
+- [ ] Email de soporte (`soporte@<dominio>`).
+- [ ] Templates de respuesta iniciales.
+
+### 15.2 Fase 1: MVP (meses 0-3)
 
 **Crítico:**
-- Help Center con 30-40 artículos cubriendo casos comunes.
+- Help Center con 30-40 artículos.
 - Email forwarding configurado.
-- Sistema simple de tracking de tickets en Notion/Linear.
+- Tracking simple en Notion/Linear.
 - Tooltips y FAQ contextuales en la app.
 
 **Importante:**
 - AI Assistant básico in-app.
 - Categorización de tickets.
 
-### 10.3 Fase 2: Escala (meses 3-9)
+### 15.3 Fase 2: Escala (meses 3-9)
 
 **Crítico:**
 - AI Assistant maduro con knowledge base completa.
 - Migración a Helpscout o similar.
-- Templates de respuesta robustos.
+- Templates robustos.
 - Reportes mensuales de soporte.
 
 **Importante:**
-- Self-service para refunds dentro de política.
+- Self-service para refunds dentro de policy.
 - Status page automatizada.
 
-### 10.4 Fase 3: Madurez (año 1+)
+### 15.4 Fase 3: Madurez (año 1+)
 
 - Primer hire de soporte (part-time o freelance).
 - Métricas de soporte como North Star.
-- Comunidad: foro o Discord donde usuarios se ayudan entre sí.
+- Comunidad: foro o Discord.
 
 ---
 
-## 11. Métricas críticas
+## 16. Métricas
 
-### 11.1 Volume y eficiencia
+### 16.1 Volumen y eficiencia
 
-- Tickets por 1.000 usuarios activos por mes (target: <5).
-- % resueltos en Nivel 0 (self-service): target >50%.
-- % resueltos en Nivel 1 (AI): target >25%.
-- % escalados a Nivel 2/3: target <25%.
+- Tickets por 1.000 users activos/mes: target < 5.
+- % resueltos en Nivel 0 (self-service): > 50%.
+- % resueltos en Nivel 1 (AI): > 25%.
+- % escalados a Nivel 2/3: < 25%.
 
-### 11.2 Calidad
+### 16.2 Calidad
 
-- Customer Satisfaction Score (CSAT): target >4.0/5.
-- Net Promoter Score (NPS) específicamente post-soporte.
-- Tasa de re-apertura de tickets (problema no resuelto realmente): target <10%.
+- CSAT: > 4.0/5.
+- NPS específicamente post-soporte.
+- Re-apertura de tickets: < 10%.
 
-### 11.3 Costo
+### 16.3 Costo
 
-- Costo de soporte por usuario activo: target <$0.10/mes.
-- Costo de AI Assistant: target <$200/mes hasta 10k MAU.
+- Costo de soporte por user activo: < $0.10/mes.
+- Costo de AI Assistant: < $200/mes hasta 10k MAU.
 
-### 11.4 Producto
+### 16.4 Producto
 
-- Top 5 categorías de tickets cada mes.
-- Trending issues que sugieren bugs o UX problems.
+- Top 5 categorías de tickets/mes.
+- Trending issues.
 - Feature requests por volumen.
 
 ---
 
-## 12. Decisiones abiertas
+## 17. Referencias internas
 
-- [ ] ¿Soporte en horario 24/7 con AI o limitado a horario laboral con
-  escalación humana? Decision: AI 24/7, humano horario hábil.
-- [ ] ¿Foro o Discord comunitario? Cuándo introducirlo.
-- [ ] ¿Programa de "power users" que ayudan a otros con incentivos
-  (Sparks)?
-- [ ] ¿Soporte por WhatsApp? (Posible pero requiere setup específico).
-- [ ] ¿Política de refunds más generosa para usuarios long-term?
-
----
-
-## 13. Referencias internas
-
-- `docs/architecture/authentication-system.md` — Account deletion flow.
-- `docs/architecture/sparks-system.md` — Refund policy de Sparks.
-- `docs/architecture/ai-gateway-strategy.md` — AI Assistant usa Gateway.
-- `docs/business/plan_de_negocio.docx` — Pricing y planes.
+| Documento | Relación |
+|-----------|----------|
+| [`../architecture/authentication-system.md`](../architecture/authentication-system.md) | Account deletion flow. |
+| [`../architecture/sparks-system.md`](../architecture/sparks-system.md) | Refund policy de Sparks. |
+| [`../architecture/anti-fraud-system.md`](../architecture/anti-fraud-system.md) | Apelaciones de fraude. |
+| [`../architecture/ai-gateway-strategy.md`](../architecture/ai-gateway-strategy.md) §4.2.8 | Task `ai_assistant_response`. |
+| [`legal-compliance.md`](legal-compliance.md) §5 | Refunds, GDPR requests. |
+| [`../ops/incidents-runbook.md`](../ops/incidents-runbook.md) | Comms de incidentes. |
+| [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) §5.10 | Eventos `ticket.*`. |
 
 ---
 
-*Documento vivo. Actualizar cuando cambien procesos, herramientas o se
-identifiquen nuevos patrones de tickets.*
+*Documento vivo. Actualizar cuando cambien procesos, herramientas o
+se identifiquen nuevos patrones de tickets.*

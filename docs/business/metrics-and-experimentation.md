@@ -1,232 +1,270 @@
 # Metrics and Experimentation Framework
 
 > Sistema para medir lo que importa, identificar qué funciona y qué no,
-> y experimentar de forma rigurosa para mejorar el producto continuamente.
-> Diseñado para un dev solo que necesita tomar decisiones basadas en datos
-> sin abrumarse con dashboards.
+> y experimentar de forma rigurosa para mejorar el producto. Diseñado
+> para dev solo que necesita decisiones data-driven sin abrumarse con
+> dashboards.
 
-**Estado:** Diseño v1.0
+**Estado:** Diseño v1.1 (profundizado para implementación)
 **Última actualización:** 2026-04
 **Owner:** —
+**Audiencia primaria:** agente AI implementador.
 **Alcance:** Sistema completo
+
+---
+
+## 0. Cómo leer este documento
+
+- §1 establece **filosofía** y NSM.
+- §2 cubre **boundaries**.
+- §3 cubre **métricas por categoría**.
+- §4 cubre **eventos a trackear** (alineado con
+  `cross-cutting/data-and-events.md` §6).
+- §5 cubre **stack tecnológico**.
+- §6 cubre **framework de experimentación**.
+- §7 cubre **A/B testing con PostHog**.
+- §8 cubre **rituals** (daily/weekly/monthly/quarterly).
+- §9 cubre **cohortes y segmentación**.
+- §10 cubre **API contracts**.
+- §11 enumera **edge cases**.
+- §12 cubre **privacy**.
+- §13 cubre **decisiones cerradas**.
 
 ---
 
 ## 1. Filosofía
 
-### 1.1 El problema sin métricas
-
-Sin un framework claro de métricas:
-- Decisiones se basan en intuición o última conversación con un usuario.
-- No sabés si una feature nueva ayudó o empeoró.
-- Marketing y desarrollo van en direcciones opuestas.
-- Recursos se gastan en cosas que no mueven la aguja.
-
-### 1.2 El problema con demasiadas métricas
-
-El opuesto también es malo:
-- 100 métricas tracked, 0 acciones tomadas.
-- Análisis paralysis.
-- Dashboards bonitos que nadie mira.
-- Confusión sobre qué es importante.
-
-### 1.3 Filosofía adoptada
+### 1.1 Principios
 
 **Pocas métricas críticas, claras y accionables.**
 
-**One North Star metric:** una métrica que captura el éxito del producto.
+**One North Star metric:** una métrica que captura el éxito del
+producto.
 
-**Métricas por categoría:** acquisition, activation, retention,
-revenue, referral. Pocas en cada una.
+**Métricas por categoría:** acquisition, activation, retention, revenue,
+referral. Pocas en cada una.
 
 **Cada métrica con threshold y acción:** "si esta métrica cae a X,
 hacemos Y".
 
-**Experimentar antes de decidir:** cambios mayores van por A/B test
-cuando es posible.
+**Experimentar antes de decidir:** cambios mayores van por A/B test.
+
+### 1.2 NSM: Weekly Practicing Users (WPU)
+
+**Definición:** users que completaron al menos 3 sesiones de práctica
+durante la última semana.
+
+#### Por qué WPU es la métrica correcta
+
+- **No es DAU/MAU genérico:** "abrir la app" no es éxito. Practicar es
+  éxito.
+- **Captura habit formation:** 3 sesiones/semana indica hábito real.
+- **Independiente del tamaño:** mide intensidad, no solo crecimiento.
+- **Conecta con revenue:** users que practican son users que pagan.
+- **Conecta con valor entregado:** user que practica está aprendiendo.
+
+#### Sub-métricas
+
+WPU se descompone en:
+- **Acquisition:** nuevos users registrándose.
+- **Activation:** % que completan primera sesión.
+- **Retention:** % que vuelven D1, D7, D30.
+- **Engagement:** sesiones por user/semana.
+- **Resurrection:** users inactivos que vuelven.
+
+Cualquier movimiento de WPU se explica por movimientos en estas.
 
 ---
 
-## 2. North Star Metric
+## 2. Boundaries
 
-### 2.1 Definición
+### 2.1 Es responsable de
 
-La North Star Metric (NSM) captura el éxito fundamental del producto.
-Cuando esta métrica sube, todo lo demás tiende a mejorar.
+- Definir taxonomía de events (catálogo en §4).
+- Configurar SDKs en cliente y backend (PostHog, Firebase, Sentry).
+- Crear y operar dashboards.
+- Framework de A/B testing.
+- Reportes mensuales y rituales.
+- Cohort analysis.
 
-**NSM propuesta: Weekly Practicing Users (WPU)**
+### 2.2 NO es responsable de
 
-Definición: usuarios que completaron al menos 3 sesiones de práctica
-durante la última semana.
+- **Emitir events específicos:** los systems dueños del dominio los
+  emiten (auth emite `user.signed_up`, sparks emite `sparks.balance_changed`,
+  etc.).
+- **Decidir features basadas en data:** humano decide.
+- **Aplicar restrictions o changes basadas en métricas:** otros systems
+  consumen events y deciden.
 
-### 2.2 Por qué WPU es la métrica correcta
+### 2.3 Tensiones
 
-**No es DAU/MAU genérico:** "abrir la app" no es éxito. Practicar es éxito.
-
-**Captura habit formation:** 3 sesiones por semana indica hábito real.
-
-**Independiente del tamaño del producto:** mide intensidad de uso, no
-solo crecimiento bruto.
-
-**Conecta con revenue:** usuarios que practican son usuarios que pagan
-(directamente o eventualmente).
-
-**Conecta con valor entregado:** un usuario que practica está aprendiendo,
-estamos cumpliendo nuestra promesa.
-
-### 2.3 Sub-métricas que componen WPU
-
-WPU se descompone en:
-
-- **Acquisition:** nuevos usuarios registrándose.
-- **Activation:** % de nuevos usuarios que completan primera sesión.
-- **Retention:** % que vuelven en días 1, 3, 7, 30.
-- **Engagement:** sesiones por usuario por semana.
-- **Resurrection:** usuarios inactivos que vuelven.
-
-Cualquier movimiento de WPU se explica por movimientos en estas sub-métricas.
+| Tensión | Resolución |
+|---------|-----------|
+| Event con PII queremos para analysis | Hashear `user_id`; no enviar PII directa |
+| Deduplicación entre cliente y backend events | Convención: cliente emite cuando user lo causa; backend cuando es server-side |
+| Mismo concepto en domain event y product event | Separados: domain events para reaction de sistemas; product events para analytics |
 
 ---
 
 ## 3. Métricas por categoría
 
-### 3.1 Acquisition (adquisición)
+### 3.1 Acquisition
 
-**Qué mide:** ¿cuántos usuarios nuevos llegan al producto?
+**Qué mide:** ¿cuántos users nuevos llegan?
 
 | Métrica | Definición | Target |
 |---------|-----------|--------|
-| New signups/day | Registros completados por día | Crecimiento mes a mes |
-| CAC | Costo de adquisición por usuario pago | <$10 USD |
-| Source attribution | De dónde vienen los usuarios | Diversificado |
-| Conversion rate (visitor → signup) | % de visitas que se registran | >5% |
+| New signups/day | Registros completados | Crecimiento mes a mes |
+| CAC | Costo de adquisición/user pago | < $10 USD |
+| Source attribution | De dónde vienen | Diversificado |
+| Conversion (visitor → signup) | % de visitas que se registran | > 5% |
 
-**Fuentes de datos:**
+**Fuentes de data:**
 - Firebase Analytics (signups).
 - PostHog (funnel completo).
-- Plataformas de marketing (UTM tracking).
+- UTM tracking en marketing.
 
 **Experimentación típica:**
-- Mensajes de la landing page.
-- Calls to action.
+- Mensajes de landing.
+- CTAs.
 - Social proof.
 - Pricing display.
 
-### 3.2 Activation (activación)
+### 3.2 Activation
 
-**Qué mide:** ¿los usuarios nuevos llegan al "aha moment"?
-
-| Métrica | Definición | Target |
-|---------|-----------|--------|
-| Onboarding completion rate | % que completa onboarding | >85% |
-| First session completion | % que completa primera sesión | >70% |
-| Day 1 return | % que vuelve al día siguiente | >50% |
-| Mini-test completion (D0) | % que hace mini-test inicial | >80% |
-| Assessment completion (D7) | % que hace assessment al día 7 | >30% |
-| Trial → Paid conversion | % de trial users que pagan | >10% |
-
-**Aha moment definido:** completar el primer ejercicio con feedback
-positivo. El usuario debe pensar "wow, esto funciona".
-
-**Experimentación típica:**
-- Estructura del onboarding.
-- Primer ejercicio que se le presenta.
-- Mensajes durante trial.
-- Comunicación pre-assessment.
-
-### 3.3 Retention (retención)
-
-**Qué mide:** ¿los usuarios siguen viniendo?
+**Qué mide:** ¿llegan al "aha moment"?
 
 | Métrica | Definición | Target |
 |---------|-----------|--------|
-| D1 retention | % activo día después de signup | >50% |
-| D7 retention | % activo semana después de signup | >30% |
-| D30 retention | % activo mes después de signup | >20% |
-| D90 retention | % activo 3 meses después | >15% |
-| Churn rate (paid) | % de paid que cancela mensualmente | <10% |
-| Streak average | Streak promedio de usuarios activos | >5 días |
-| Sessions per week | Sesiones promedio por usuario activo | >3 |
+| Onboarding completion | % completa onboarding | > 85% |
+| First session completion | % completa primera sesión | > 70% |
+| Day 1 return | % vuelve al día siguiente | > 50% |
+| Mini-test completion (D0) | % hace mini-test | > 80% |
+| Assessment completion (D7) | % hace assessment | > 30% |
+| Trial → Paid conversion | % paga | > 10% |
 
-**Retention curve típica para apps de educación:** caída fuerte primeras
-2 semanas, estabilización después. Apps exitosas tienen "smile curve":
-curva sube después del valle inicial cuando los usuarios habituados se
-mantienen.
+**Aha moment:** completar primer ejercicio con feedback positivo. User
+piensa "wow, esto funciona".
 
-**Experimentación típica:**
-- Frequency y contenido de notificaciones.
-- Mecánicas de gamificación.
-- Mensajes de re-engagement.
-- Daily goal difficulty.
+### 3.3 Retention
 
-### 3.4 Revenue (monetización)
+**Qué mide:** ¿siguen viniendo?
 
-**Qué mide:** ¿el negocio es sostenible?
+| Métrica | Definición | Target |
+|---------|-----------|--------|
+| D1 retention | % activo D1 post-signup | > 50% |
+| D7 retention | % activo D7 | > 30% |
+| D30 retention | % activo D30 | > 20% |
+| D90 retention | % activo D90 | > 15% |
+| Churn rate (paid) | % cancela mensualmente | < 10% |
+| Streak average | Streak promedio activos | > 5 días |
+| Sessions per week | Sesiones/user activo | > 3 |
+
+**Retention curve:** caída fuerte primeras 2 semanas, estabilización
+después. "Smile curve" si users habituados se mantienen.
+
+### 3.4 Revenue
 
 | Métrica | Definición | Target |
 |---------|-----------|--------|
 | MRR | Monthly Recurring Revenue | Crecimiento mes a mes |
-| ARR | Annual Recurring Revenue | MRR × 12 |
-| ARPU | Avg Revenue Per User (paid) | >$3 USD/mes |
-| LTV | Lifetime Value | >$30 USD |
-| LTV/CAC ratio | Ratio | >3 |
-| Plan distribution | % en cada plan | Pro >50% |
-| Pack purchases per user | Sparks packs comprados promedio | n/a |
-| Conversion (free → paid) | % que pasa a pagar | >10% |
+| ARPU | Avg Revenue/User pago | > $3 USD/mes |
+| LTV | Lifetime Value | > $30 USD |
+| LTV/CAC ratio | | > 3 |
+| Plan distribution | % en cada plan | Pro > 50% |
+| Pack purchases/user | Sparks packs | n/a |
+| Conversion (free → paid) | | > 10% |
 
-**Experimentación típica:**
-- Pricing.
-- Estructura de planes.
-- Trial duration.
-- Upsell timing.
-
-### 3.5 Referral (viralidad)
-
-**Qué mide:** ¿los usuarios traen más usuarios?
+### 3.5 Referral
 
 | Métrica | Definición | Target |
 |---------|-----------|--------|
-| Referral rate | % de usuarios que refieren al menos 1 | >15% |
-| Avg referrals per referrer | Cuántos amigos refieren | >2 |
-| Referred user activation | % de referidos que activan | >70% (mejor que normal) |
-| K-factor | (% referrers) × (avg referrals) | >0.3 |
-| Share rate | % que comparte logros externos | >5% |
-
-**Experimentación típica:**
-- Recompensas por referido.
-- Momento del prompt de referido.
-- Mensajes pre-armados para compartir.
+| Referral rate | % users que refieren al menos 1 | > 15% |
+| Avg referrals/referrer | | > 2 |
+| Referred user activation | % de referidos que activan | > 70% (mejor que normal) |
+| K-factor | (% referrers) × (avg referrals) | > 0.3 |
+| Share rate | % que comparte logros | > 5% |
 
 ---
 
-## 4. Métricas operacionales
+## 4. Eventos clave a trackear
 
-### 4.1 Performance técnico
+### 4.1 Distinción crítica: domain vs product events
 
-| Métrica | Definición | Target |
-|---------|-----------|--------|
-| API p95 latency | Latencia p95 endpoints | <300ms |
-| App crash rate | Crashes por sesión | <0.1% |
-| API error rate | % de requests con error 5xx | <0.5% |
-| Time to interactive | App responsive desde apertura | <2s |
-| AI response time | Tiempo de respuesta IA en chat | <3s |
+(Detalle completo en `cross-cutting/data-and-events.md` §2.)
 
-### 4.2 Costos
+- **Domain events (Inngest):** comunicación cross-system. Sistemas
+  reaccionan.
+- **Product events (PostHog):** analytics, funnels, A/B testing.
+- **Internal logs (Sentry):** errors, debugging.
 
-| Métrica | Definición | Target |
-|---------|-----------|--------|
-| Cost per user per month | Total infra / users | <$0.50 free, <$2 paid |
-| AI cost per user | Costos de IA / users | <30% del ARPU |
-| Cost per Spark consumed | Variable cost / Sparks usados | <$0.005 |
+### 4.2 Lista de product events para PostHog
 
-### 4.3 Calidad de IA
+Catálogo mínimo del MVP:
 
-| Métrica | Definición | Target |
-|---------|-----------|--------|
-| AI validation pass rate | % de outputs que pasan validación | >95% |
-| Pronunciation scoring accuracy | vs ground truth | >85% |
-| Roadmap quality (user rating) | Rating de roadmaps | >4/5 |
-| AI Assistant resolution rate | % de tickets resueltos sin escalar | >60% |
+```typescript
+// Lifecycle
+'user_signed_up'              { method, country, ... }
+'user_completed_onboarding'   { duration_seconds }
+'user_completed_mini_test'    { detected_cefr }
+'user_started_trial'          {}
+'user_completed_assessment'   { duration_minutes, scores }
+'user_subscribed'             { plan, currency, amount, country }
+'user_cancelled'              { reason, days_active, plan }
+
+// Engagement
+'session_started'             { source: 'notification'|'organic' }
+'session_completed'           { duration_seconds, exercises_count }
+'exercise_completed'          { type, score, mastery_change }
+'block_completed'             { block_id, mastery_score, attempts }
+'level_completed'             { level_id, time_to_complete_days }
+'daily_goal_met'              { streak_days }
+'streak_at_risk'              { streak_days }
+'streak_broken'               { previous_streak }
+
+// Achievement & social
+'achievement_unlocked'        { achievement_id, rarity }
+'sparks_earned'               { amount, source }
+'sparks_spent'                { amount, on_what }
+'pack_purchased'              { pack_type, amount }
+'referral_sent'               { method }
+'referral_signed_up'          { referrer_hash }
+'logro_shared'                { achievement_id, platform }
+
+// Monetization
+'paywall_viewed'              { context, plan_shown }
+'plan_selected'               { plan }
+'payment_attempted'           { method, amount }
+'payment_succeeded'           { method, amount }
+'payment_failed'              { reason }
+
+// Support
+'help_article_viewed'         { article_id }
+'ai_assistant_opened'         { context }
+'ticket_created'              { category, priority }
+
+// Notifications
+'notification_received'       { notification_id, category }
+'notification_opened'         { notification_id, category }
+'notification_dismissed'      { notification_id, category }
+```
+
+### 4.3 Convenciones
+
+- **Naming:** snake_case, verbo en pasado.
+- **`distinct_id`:** hash del `users.id` (SHA-256 con pepper). Nunca
+  email u otra PII.
+- **Properties:** datos no-PII para análisis. Country sí, IP no.
+- **Numerics:** datos numéricos para análisis (no string).
+- **Cliente preferentemente:** backend solo si event no es visible al
+  cliente (ej: payment webhook).
+
+### 4.4 Anti-patterns
+
+- ❌ Trackear cada UI click sin contexto (`button_clicked`).
+- ❌ Eventos genéricos sin properties útiles.
+- ❌ PII directa en properties.
+- ❌ Eventos duplicados en cliente + backend.
 
 ---
 
@@ -236,7 +274,7 @@ mantienen.
 
 | Componente | Tecnología | Para qué |
 |-----------|-----------|---------|
-| Product analytics | PostHog | Eventos del producto, funnels, retention |
+| Product analytics | PostHog | Eventos del producto, funnels, retention, A/B testing, feature flags |
 | Mobile analytics | Firebase Analytics | Eventos mobile, attribution |
 | Error tracking | Sentry | Crashes, errors |
 | Logs | Cloudflare Logs + Better Stack | Logs de Workers |
@@ -269,95 +307,33 @@ mantienen.
 - Errors de backend.
 - Performance.
 
-Tres servicios, no más. Suficientes para tomar decisiones.
+Tres servicios. Suficientes.
 
 ---
 
-## 6. Eventos clave a trackear
+## 6. Framework de experimentación
 
-### 6.1 Eventos de usuario
+### 6.1 Cuándo experimentar
 
-```typescript
-// Lifecycle
-'user_signed_up'         { method: 'google'|'apple'|'email', country, ... }
-'user_completed_onboarding'  { duration_seconds, all_questions_answered }
-'user_completed_mini_test'   { detected_cefr }
-'user_started_trial'     { day }
-'user_completed_assessment'  { duration, scores }
-'user_subscribed'        { plan, currency, amount }
-'user_cancelled'         { reason, days_active }
-
-// Engagement
-'session_started'        { source: 'notification'|'organic' }
-'session_completed'      { duration, exercises_count }
-'exercise_completed'     { type, score, mastery_change }
-'block_completed'        { block_id, attempts, mastery_score }
-'level_completed'        { level_id, time_to_complete }
-'daily_goal_met'         { streak_days }
-'streak_at_risk'         { streak_days }
-'streak_broken'          { previous_streak }
-
-// Achievement & social
-'achievement_unlocked'   { achievement_id, rarity }
-'sparks_earned'          { amount, source }
-'sparks_spent'           { amount, on_what }
-'pack_purchased'         { pack_type, amount }
-'referral_sent'          { method }
-'referral_signed_up'     { referrer_id }
-'logro_shared'           { achievement_id, platform }
-
-// Monetization
-'paywall_viewed'         { context, plan_shown }
-'plan_selected'          { plan }
-'payment_attempted'      { method, amount }
-'payment_succeeded'      { method, amount }
-'payment_failed'         { reason }
-
-// Support
-'help_article_viewed'    { article_id }
-'ai_assistant_opened'    { context }
-'ticket_created'         { category, priority }
-```
-
-### 6.2 Principios de naming
-
-- Verbo en pasado: `user_signed_up` no `user_signs_up`.
-- Snake case consistente.
-- Sujeto + acción: `user_X`, `session_X`, `block_X`.
-- Properties con datos relevantes para análisis.
-
-### 6.3 Anti-patterns a evitar
-
-- ❌ Eventos genéricos como `button_clicked` (sin contexto = sin valor).
-- ❌ Trackear cada UI interaction (ruido).
-- ❌ PII en properties (email, nombre completo, etc.).
-- ❌ Eventos duplicados (mismo evento en cliente y backend).
-
----
-
-## 7. Framework de experimentación
-
-### 7.1 Cuándo experimentar
-
-**SÍ experimentar:**
+**SÍ:**
 - Cambios en flujos críticos (onboarding, paywall, pricing).
 - Nuevas features con incertidumbre.
 - Cambios en algoritmos (recommendations, scoring).
 - Mensajes y copy en momentos clave.
 
-**NO experimentar:**
+**NO:**
 - Bug fixes (deploy directo).
-- Mejoras obvias de UX (botón más visible, etc.).
+- Mejoras obvias de UX.
 - Compliance changes.
-- Cambios de infrastructure no visibles al usuario.
+- Cambios de infrastructure no visibles.
 
-### 7.2 Anatomía de un experimento
+### 6.2 Anatomía de un experimento
 
 ```typescript
 interface Experiment {
   id: string;
   name: string;
-  hypothesis: string;          // "Si hacemos X, esperamos que Y suba/baje"
+  hypothesis: string;              // "Si hacemos X, esperamos que Y suba/baje"
 
   variants: {
     control: VariantConfig;
@@ -366,14 +342,14 @@ interface Experiment {
   };
 
   // Métricas
-  primary_metric: string;      // métrica principal a optimizar
-  guardrail_metrics: string[]; // métricas que NO deben empeorar
-  secondary_metrics: string[]; // métricas adicionales a observar
+  primary_metric: string;
+  guardrail_metrics: string[];     // métricas que NO deben empeorar
+  secondary_metrics: string[];
 
   // Configuración
   target_audience: AudienceFilter;
-  traffic_allocation: number;  // % de usuarios incluidos
-  variant_split: Record<string, number>; // % por variante
+  traffic_allocation: number;      // % de users incluidos
+  variant_split: Record<string, number>; // % por variant
 
   // Statistical
   expected_effect_size: number;
@@ -382,76 +358,68 @@ interface Experiment {
 
   // Lifecycle
   status: 'draft' | 'running' | 'completed' | 'rolled_back';
-  started_at?: Date;
-  ended_at?: Date;
+  started_at?: string;
+  ended_at?: string;
   results?: ExperimentResults;
 }
 ```
 
-### 7.3 Estadística básica para dev solo
+### 6.3 Estadística básica
 
 **Sample size:**
-- Mínimo 1.000 usuarios por variante para detectar efectos del 10%+.
-- Más usuarios = detectar efectos más pequeños.
-- Calculadora: usar online (e.g., Optimizely's calculator) o función
-  built-in de PostHog.
+- Mínimo 1.000 users por variant para detectar efectos del 10%+.
+- Más users = detectar efectos más pequeños.
+- Calculadora online o función built-in de PostHog.
 
 **Significancia estadística:**
-- p-value < 0.05 es el estándar (95% confidence).
-- No detener el experimento prematuramente "porque ya tengo significancia".
+- p-value < 0.05 (95% confidence).
+- NO detener prematuramente "porque ya tengo significancia".
 - Esperar duración planificada salvo casos extremos.
 
 **Effect size:**
 - Detectar efectos pequeños requiere mucho más sample.
-- Si esperás 1% de mejora, vas a necesitar mucho tráfico.
-- Si esperás 20% de mejora, sample size es manejable.
+- Si esperás 1% de mejora: mucho tráfico.
+- Si esperás 20%: sample manejable.
 
 **Power:**
-- 80% power es estándar (probabilidad de detectar el efecto si existe).
-- Incluir en cálculo de sample size.
+- 80% power es estándar.
+- Incluir en cálculo de sample.
 
-### 7.4 Tipos de experimentos comunes
+### 6.4 Tipos de experimentos
 
-#### A/B Test simple
-Una variable, dos versiones. Lo más común.
+| Tipo | Descripción |
+|------|-------------|
+| A/B Test simple | 1 variable, 2 versiones. Lo más común. |
+| Multivariate | Múltiples variables simultáneamente. Requiere más tráfico. |
+| Holdout | Un % de users siempre ve "viejo" para baseline a largo plazo. |
+| Pre-post | Solo cuando A/B real no posible (cambios que afectan a todos). Menos riguroso. |
 
-Ejemplo: "Botón verde vs azul en paywall"
-
-#### Multivariate
-Múltiples variables simultáneamente. Requiere más tráfico.
-
-Ejemplo: combinaciones de copy + color + posición.
-
-#### Holdout
-Un % de usuarios siempre ve "viejo" para baseline a largo plazo.
-
-Útil para medir efectos acumulados de muchos cambios.
-
-#### Pre-post (sin control simultáneo)
-Solo cuando A/B real no es posible (cambios que afectan a todos).
-
-Menos riguroso, sujeto a confounders.
-
-### 7.5 Experimentos prioritarios para los primeros 6 meses
+### 6.5 Experimentos prioritarios primeros 6 meses
 
 **Trimestre 1:**
-1. Onboarding length (5 preguntas vs 7 vs 3).
-2. Trial duration (7 días vs 14 días).
+1. Onboarding length (5 vs 7 vs 3 preguntas).
+2. Trial duration (7 vs 14 días).
 3. Free trial Sparks (50 vs 30 vs 100).
-4. Assessment timing (día 5 vs 7 vs 10).
+4. Assessment timing (Day 5 vs 7 vs 10).
 
 **Trimestre 2:**
 1. Paywall positioning (post-assessment vs primera Sparks insuficiente).
-2. Plan recommendations (which plan to highlight).
+2. Plan recommendations (qué plan highlightear).
 3. Pricing structure (3 tiers vs 2).
 4. Referral rewards (Sparks vs free month).
 
-### 7.6 Implementación en PostHog
+---
+
+## 7. A/B testing con PostHog
+
+### 7.1 Setup
 
 PostHog tiene feature flags y experiments built-in.
 
 ```typescript
 // Cliente
+import { posthog } from '@posthog/react-native';
+
 const variant = posthog.getFeatureFlag('onboarding-length-test');
 
 if (variant === 'short') {
@@ -465,30 +433,52 @@ if (variant === 'short') {
 // Track conversion
 posthog.capture('onboarding_completed', {
   variant,
-  duration_seconds: duration
+  duration_seconds: duration,
 });
 ```
 
 PostHog automáticamente analiza resultados con statistical tests.
 
+### 7.2 Reglas de uso
+
+- **Asignación al variant:** `distinct_id` debe ser estable
+  (`hash(user_id)`); user siempre ve misma variant.
+- **Fallback:** si flag no disponible (sin red), usar default
+  conservador.
+- **No mid-experiment changes:** si modificás el experimento, archive y
+  crear nuevo.
+- **Pre-registration:** antes de iniciar, documentar hipótesis y
+  guardrails. Evita post-hoc rationalization.
+
+### 7.3 Análisis post-experimento
+
+Antes de declarar ganador:
+- p-value < 0.05.
+- Sample mínimo alcanzado.
+- Guardrails no violados.
+- Duration mínima respetada.
+- Sanity checks (no bug en setup).
+
+Si guardrail violado: rollback aunque primary mejore.
+
 ---
 
-## 8. Reportes y rituales
+## 8. Rituales
 
 ### 8.1 Daily check (5 min)
 
-Cada mañana, mirar:
+Cada mañana:
 - WPU del día anterior.
-- Crashes y errores nuevos.
+- Crashes y errors nuevos.
 - Tickets de soporte abiertos.
 - Cualquier anomalía evidente.
 
-Tiempo total: 5 minutos. No es análisis profundo, solo "todo bien?".
+Tiempo total: 5 min. No es análisis profundo, solo "todo bien?".
 
 ### 8.2 Weekly review (30-60 min)
 
 Cada lunes (o domingo noche):
-- Tendencia semanal de métricas core.
+- Tendencia semanal de core metrics.
 - Cohort retention de signups recientes.
 - Performance de experimentos activos.
 - Top categorías de tickets.
@@ -498,8 +488,8 @@ Cada lunes (o domingo noche):
 
 Mensualmente:
 - Análisis completo de funnel.
-- Retention cohorts comparados (signups este mes vs mes anterior).
-- Revisión de NSM y sub-métricas.
+- Retention cohorts comparados (signups este mes vs anterior).
+- Revisión de NSM y sub-metrics.
 - Review de costos vs revenue.
 - Roadmap de experimentos del mes siguiente.
 
@@ -535,23 +525,159 @@ B1 vs B2 - patrones de uso diferentes.
 ### 9.2 Análisis de cohortes
 
 Las cohortes revelan cosas que las métricas agregadas esconden:
+
 - "Retention general bajó" puede esconder "retention de marzo bajó pero
   abril mejoró".
-- "Conversion subió" puede ser solo una cohorte específica que infló el promedio.
+- "Conversion subió" puede ser solo una cohorte específica que infló
+  el promedio.
 
 Mirar cohorts mensualmente, no solo agregados.
 
 ---
 
-## 10. Privacidad y compliance
+## 10. API contracts
 
-### 10.1 Datos que tracking
+### 10.1 Cliente: SDK de PostHog
+
+```typescript
+// Inicialización en app startup
+posthog.init(POSTHOG_API_KEY, {
+  host: 'https://app.posthog.com',
+  bootstrap: {
+    distinctID: hash(userId),
+    isIdentifiedID: true,
+  },
+});
+
+// Track event
+posthog.capture('event_name', { property1: 'value', property2: 42 });
+
+// Identify (para vincular pre-signup events)
+posthog.identify(hash(userId), { country, plan });
+
+// Feature flag
+const variant = posthog.getFeatureFlag('experiment-name');
+```
+
+### 10.2 Backend: emit events
+
+Para events que no son visibles al cliente (ej: payment webhook):
+
+```typescript
+// apps/workers/src/utils/posthog.ts
+export async function trackBackendEvent(
+  event: string,
+  userId: string | null,
+  properties: Record<string, unknown> = {},
+) {
+  await fetch('https://app.posthog.com/capture/', {
+    method: 'POST',
+    body: JSON.stringify({
+      api_key: POSTHOG_API_KEY,
+      event,
+      distinct_id: userId ? hash(userId) : 'anonymous',
+      properties,
+      timestamp: new Date().toISOString(),
+    }),
+  });
+}
+```
+
+### 10.3 Internal: `getNsm`
+
+```typescript
+async function getNsm(period: 'day' | 'week' | 'month'): Promise<{
+  current: number;
+  previous: number;
+  change_pct: number;
+}>
+```
+
+Query simple a PostHog API o cálculo desde Postgres directo.
+
+### 10.4 Internal: `getFunnelData`
+
+```typescript
+async function getFunnelData(funnelName: string, period: string): Promise<{
+  steps: Array<{
+    name: string;
+    users: number;
+    conversion_pct: number;
+  }>;
+}>
+```
+
+### 10.5 Internal: `createExperiment` (admin)
+
+PostHog UI maneja la creación; este endpoint solo para auditoría
+interna:
+
+```typescript
+async function createExperiment(config: ExperimentConfig): Promise<{
+  experiment_id: string;
+  posthog_id: string;
+}>
+```
+
+### 10.6 Internal: `endExperiment`
+
+```typescript
+async function endExperiment(
+  experimentId: string,
+  decision: 'ship_treatment' | 'ship_control' | 'inconclusive',
+  notes: string,
+): Promise<void>
+```
+
+---
+
+## 11. Edge cases (tests obligatorios)
+
+### 11.1 Tracking
+
+1. **User offline durante 24h con events queued:** PostHog SDK
+   buffer-flushing automático cuando recupera conexión. Validar.
+2. **User cambia device:** mismo `distinct_id` (hash de user_id);
+   eventos siguen vinculándose correctamente.
+3. **User borra cuenta:** propagar delete a PostHog vía
+   `posthog.api/persons/delete`.
+
+### 11.2 Eventos
+
+4. **Evento con property que es PII (bug):** validation pre-emit
+   detecta keys prohibidas (`email`, `phone`); rechaza con log.
+5. **Evento duplicado en <1s:** PostHog dedupe por
+   `distinct_id + event + timestamp`.
+6. **Cliente y backend emiten mismo evento:** convención decide quién
+   (cliente generalmente). Si ambos: investigar bug.
+
+### 11.3 A/B testing
+
+7. **User en variant A pero feature flag service caído:** SDK retorna
+   default; user ve control. Variant assignment puede inconsistente
+   este request.
+8. **Experiment con guardrail violado pero primary mejorado:**
+   rollback automático; humano decide si revivir con cambios.
+9. **Sample size no alcanzado pero stakeholder quiere "ya":** rechazar.
+   Documentar política.
+
+### 11.4 Cohorts
+
+10. **Cohorte de signups en marzo migra de plan:** retention puede
+    medirse por cohorte original (signup) o cohorte actual (plan).
+    Documentar cuál se usa.
+
+---
+
+## 12. Privacy y compliance
+
+### 12.1 Datos que tracking
 
 **Permitido (con consent en privacy policy):**
 - Eventos de comportamiento.
-- Properties anónimas (país, plan, level).
+- Properties anónimas (country, plan, level).
 - Performance metrics.
-- Crashes y errores.
+- Crashes y errors.
 
 **Requiere consent explícito:**
 - Datos personales (email, nombre).
@@ -559,44 +685,113 @@ Mirar cohorts mensualmente, no solo agregados.
 - Ubicación precisa.
 
 **Nunca:**
-- Información de pago (manejado por Stripe/RevenueCat).
+- Información de pago.
 - Datos sensibles (salud, religión, política).
 
-### 10.2 PII handling
+### 12.2 PII handling
 
-PostHog y Firebase Analytics aceptan user IDs (hasheados o UUIDs). No
-mandar PII directamente.
+- PostHog y Firebase Analytics aceptan UUIDs hasheados.
+- No mandar PII directamente.
+- Para análisis cualitativo con PII: tools separadas con permisos
+  restringidos.
 
-Para análisis cualitativo que requiere PII (revisión de tickets):
-herramientas separadas con permisos restringidos.
-
-### 10.3 Right to be forgotten
+### 12.3 Right to be forgotten
 
 Account deletion debe propagar a:
 - Postgres principal.
-- PostHog (API de delete user).
+- PostHog (`api/persons/delete`).
 - Firebase Analytics.
 - Sentry (purge user events).
 - Cualquier otra tool.
 
-Idealmente automatizado en el flow de account deletion.
+Idealmente automatizado en flow de account deletion.
+
+(Detalle en `architecture/authentication-system.md` §13.2.)
 
 ---
 
-## 11. Plan de implementación
+## 13. Decisiones cerradas
 
-### 11.1 Fase 0: Pre-launch
+### 13.1 NSM = WPU (3 sesiones/semana) ✓
+
+(Detalle en §1.2.)
+
+**Razón:** captura habit formation real, no vanity. Conecta con revenue
+y retention.
+
+### 13.2 Tracking de costos por user: **agregado, no individual** ✓
+
+**Razón:** trade-off entre precisión y overhead. Agregar `ai_cost_per_user_daily`
+es suficiente para alertas; tracking individual de cada operación
+inflaría el storage sin justification.
+
+### 13.3 BI tool más sofisticado vs PostHog: **PostHog hasta 50k users
+activos** ✓
+
+**Razón:** PostHog cubre product analytics + A/B testing + funnels +
+cohorts. Migración a Looker/Metabase solo si necesidades específicas
+no cubiertas o si volumen excede tier de PostHog.
+
+### 13.4 Hire de data analyst: **post-100 users pagos** ✓
+
+**Razón:** antes de eso, cantidad de data no justifica. Owner puede
+manejar análisis con rituals semanales.
+
+### 13.5 Hacer públicas algunas métricas (radical transparency): **NO en
+MVP** ✓
+
+**Razón:** complejidad operativa + riesgo de competidores leverage.
+Reconsiderar año 2 si build community fuerte.
+
+---
+
+## 14. Anti-patterns a evitar
+
+### 14.1 Vanity metrics
+
+Métricas que se ven bien pero no aportan:
+- Total downloads (no si no usan).
+- Total signups (no si no activan).
+- Total page views (no si no convierten).
+- Followers en redes sociales.
+
+Si una métrica nunca cambia tu decisión, es vanity.
+
+### 14.2 Cherry picking
+
+Mostrar solo las métricas que confirman lo que querías. Honestidad
+contigo mismo es esencial.
+
+### 14.3 Correlation = causation
+
+Que A y B subieran juntos no significa A causó B. Solo experimentos
+rigurosos establecen causalidad.
+
+### 14.4 Goodhart's Law
+
+"Cuando una métrica se vuelve target, deja de ser buena métrica."
+
+Si optimizás obsesivamente por una métrica, los users la van a
+manipular o vos la vas a hackear inconscientemente.
+
+Mitigación: guardrail metrics + revisión cualitativa.
+
+---
+
+## 15. Plan de implementación
+
+### 15.1 Fase 0: Pre-launch
 
 **Crítico:**
 - PostHog setup con eventos core.
 - Firebase Analytics integrado en mobile.
 - Sentry configurado.
-- Definición clara de NSM y métricas core.
+- Definición clara de NSM y core metrics.
 
-### 11.2 Fase 1: MVP (meses 0-3)
+### 15.2 Fase 1: MVP (meses 0-3)
 
 **Crítico:**
-- Tracking de todos los eventos definidos.
+- Tracking de todos los eventos definidos en §4.
 - Daily check ritual establecido.
 - Weekly review process.
 
@@ -604,7 +799,7 @@ Idealmente automatizado en el flow de account deletion.
 - Primer dashboard interno.
 - Setup de feature flags para A/B testing.
 
-### 11.3 Fase 2: Iteración (meses 3-9)
+### 15.3 Fase 2: Iteración (meses 3-9)
 
 **Crítico:**
 - A/B testing activo en flows críticos.
@@ -615,72 +810,60 @@ Idealmente automatizado en el flow de account deletion.
 - Migración a herramienta de visualización si necesaria.
 - Métricas de calidad de IA.
 
-### 11.4 Fase 3: Madurez (año 1+)
+### 15.4 Fase 3: Madurez (año 1+)
 
-- Predictive analytics (probabilidad de churn por usuario).
+- Predictive analytics (probabilidad de churn por user).
 - Real-time dashboards para incidents.
 - Métricas de IA propias (calidad de modelos).
 - Possibly hire de data analyst part-time.
 
 ---
 
-## 12. Anti-patrones a evitar
+## 16. Métricas operacionales
 
-### 12.1 Vanity metrics
+### 16.1 Performance técnico
 
-Métricas que se ven bien pero no aportan:
-- Total downloads (no si no usan).
-- Total signups (no si no activan).
-- Total page views (no si no convierten).
-- Followers en redes sociales.
+| Métrica | Definición | Target |
+|---------|-----------|--------|
+| API p95 latency | Latencia p95 endpoints | < 300ms |
+| App crash rate | Crashes por sesión | < 0.1% |
+| API error rate | % requests con error 5xx | < 0.5% |
+| Time to interactive | App responsive desde apertura | < 2s |
+| AI response time | Tiempo de respuesta IA en chat | < 3s |
 
-Si una métrica nunca cambia tu decisión, es vanity.
+### 16.2 Costos
 
-### 12.2 Cherry picking
+| Métrica | Definición | Target |
+|---------|-----------|--------|
+| Cost per user/mes | Total infra / users | < $0.50 free, < $2 paid |
+| AI cost per user | Costos IA / users | < 30% del ARPU |
+| Cost per Spark consumed | Variable / Sparks usados | < $0.005 |
 
-Mostrar solo las métricas que confirman lo que querías. Honestidad
-contigo mismo es esencial.
+### 16.3 Calidad de IA
 
-### 12.3 Correlation = causation
-
-Que A y B hayan subido juntos no significa que A causó B.
-Solo experimentos rigurosos establecen causalidad.
-
-### 12.4 Goodhart's Law
-
-"Cuando una métrica se vuelve target, deja de ser buena métrica."
-
-Si optimizás obsesivamente por una métrica, los usuarios la van a
-manipular o vos la vas a hackear inconscientemente.
-
-Mitigación: guardrail metrics + revisión cualitativa.
+| Métrica | Definición | Target |
+|---------|-----------|--------|
+| AI validation pass rate | % outputs que pasan validation | > 95% |
+| Pronunciation accuracy | vs ground truth | > 85% |
+| Roadmap quality (rating) | Rating de roadmaps | > 4/5 |
+| AI Assistant resolution | % tickets resueltos sin escalar | > 60% |
 
 ---
 
-## 13. Decisiones abiertas
+## 17. Referencias internas
 
-- [ ] ¿NSM debería ser WPU o algo más específico (ej: Weekly Speakers,
-  usuarios que tuvieron al menos 1 conversación con IA)?
-- [ ] ¿Qué tan obsesivamente trackear costos por usuario? Trade-off entre
-  precisión y overhead.
-- [ ] ¿Cuándo introducir herramienta de BI más sofisticada vs PostHog?
-- [ ] ¿Hire de data analyst antes o después de primer 100 usuarios pagos?
-- [ ] ¿Hacer públicas algunas métricas (radical transparency) para construir
-  trust con usuarios?
-
----
-
-## 14. Referencias internas
-
-- `docs/business/plan_de_negocio.docx` — Targets de negocio que las
-  métricas validan.
-- `docs/architecture/sparks-system.md` — Métricas de Sparks system.
-- `docs/architecture/notifications-system.md` — Métricas de notificaciones.
-- `docs/product/motivation-and-achievements.md` — Métricas de engagement.
+| Documento | Relación |
+|-----------|----------|
+| [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) | Definición de domain events vs product events. |
+| [`plan_de_negocio.docx`](plan_de_negocio.docx) | Targets de negocio que las métricas validan. |
+| [`../architecture/sparks-system.md`](../architecture/sparks-system.md) §15 | Métricas de Sparks. |
+| [`../architecture/notifications-system.md`](../architecture/notifications-system.md) §13 | Métricas de notifications. |
+| [`../product/motivation-and-achievements.md`](../product/motivation-and-achievements.md) §16 | Métricas de engagement. |
+| Cada documento de sistema tiene sección §X de Métricas con targets propios. |
 
 ---
 
-## 15. Lecturas recomendadas
+## 18. Lecturas recomendadas
 
 - "Lean Analytics" de Croll & Yoskovitz.
 - "Hooked" de Nir Eyal (engagement metrics).
