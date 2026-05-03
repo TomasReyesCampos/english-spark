@@ -4,8 +4,9 @@
 > que es el activo central del producto. Pipeline IA-asistida con
 > revisión humana selectiva.
 
-**Estado:** Diseño v1.1 (profundizado para implementación)
-**Última actualización:** 2026-04
+**Estado:** Diseño v1.2 (modelo atomic+composite promovido desde
+exploración)
+**Última actualización:** 2026-05
 **Owner:** —
 **Audiencia primaria:** agente AI implementador.
 **Alcance:** Sistema completo
@@ -16,17 +17,23 @@
 
 - §1 establece **el contenido como activo central**.
 - §2 cubre **boundaries**.
-- §3 cubre **anatomía de un asset**.
-- §4 cubre el **proceso de creación** (pipeline).
-- §5 cubre **bloques** (composición de assets).
-- §6 cubre **cobertura inicial** y roadmap de biblioteca.
-- §7 cubre **schemas Postgres**.
-- §8 cubre **API contracts**.
-- §9 cubre **mantenimiento** (tracking de performance).
-- §10 cubre **stack tecnológico**.
-- §11 enumera **edge cases**.
-- §12 cubre **eventos**.
-- §13 cubre **decisiones cerradas**.
+- §3 cubre el **modelo atomic + composite** (key economic principle).
+- §4 cubre **anatomía de un asset composite**.
+- §5 cubre el **proceso de creación** (pipeline).
+- §6 cubre **bloques** (composición de assets).
+- §7 cubre **cobertura inicial** y roadmap de biblioteca.
+- §8 cubre **schemas Postgres**.
+- §9 cubre **API contracts**.
+- §10 cubre **mantenimiento** (tracking de performance).
+- §11 cubre **stack tecnológico**.
+- §12 enumera **edge cases**.
+- §13 cubre **eventos**.
+- §14 cubre **decisiones cerradas**.
+
+> **Cambio en v1.2:** se promovió el modelo atomic+composite desde
+> [`docs/explorations/multimedia-assets.md`](../explorations/multimedia-assets.md).
+> Detalles específicos de generación de video/imagen siguen en
+> exploración. Ver §3 para principio core.
 
 ---
 
@@ -68,7 +75,12 @@ que no, se reemplazan.
 **Específico para hispanohablantes:** errores típicos, contexto
 cultural, vocabulario familiar.
 
-**Reusabilidad máxima:** componibles, etiquetados ricamente.
+**Reusabilidad máxima:** componibles, etiquetados ricamente. Ver §3
+para el modelo atomic+composite que materializa este principio.
+
+**Más preassets reutilizables = engine más barato.** Operaciones
+realtime de IA cuestan dinero por uso; preassets cuestan ~$0 marginal
+por delivery. Cada atomic reutilizado N veces divide su costo por N.
 
 ---
 
@@ -76,11 +88,16 @@ cultural, vocabulario familiar.
 
 ### 2.1 Es responsable de
 
-- Crear y mantener `learning_assets` (entries individuales).
-- Crear y mantener `learning_blocks` (composiciones de assets).
+- Crear y mantener `media_atomics` (piezas individuales de media).
+- Crear y mantener `characters` (consistencia visual+auditiva
+  cross-asset).
+- Crear y mantener `learning_assets` (composites: ejercicios que
+  combinan atomics + interacción pedagógica).
+- Crear y mantener `learning_blocks` (secuencias de composites).
 - Pipeline de generación con IA + validation humana.
-- Versionado de assets.
-- Tracking de performance (rating, completion rate).
+- Versionado de assets y atomics.
+- Tracking de performance + reuse stats (rating, completion rate,
+  use_count).
 - Mantenimiento (retire de assets viejos, mejora de bajo performance).
 - Admin panel para review.
 
@@ -105,9 +122,137 @@ cultural, vocabulario familiar.
 
 ---
 
-## 3. Anatomía de un asset
+## 3. Modelo atomic + composite
 
-### 3.1 Componentes
+### 3.1 Principio rector
+
+> **Más preassets reutilizables = engine más barato.**
+
+Operaciones realtime de IA cuestan dinero por uso (ver
+`sparks-system.md` §5). Preassets cuestan ~$0 marginal por delivery.
+Cada pieza de media reutilizada N veces divide su costo por N.
+
+Para materializar este principio, los assets se modelan en dos capas:
+
+| Capa | Qué es | Tabla | Ejemplos |
+|------|--------|-------|----------|
+| **Atomic** | Pieza individual de media | `media_atomics` | `audio_anita_intro_track_jr_v1`, `video_sarah_introduces_30s`, `img_coffee_shop_interior_v1` |
+| **Composite** | Ejercicio pedagógico que usa atomics | `learning_assets` | `roleplay_interview_with_sarah`, `listening_mc_about_coffee_scene` |
+
+Un mismo atomic puede ser usado en múltiples composites:
+
+```
+ATOMIC                                       COMPOSITE
+─────────────────────────────────────        ──────────────────────────────────────
+audio_anita_intro_track_jr_v1          ←─── used in: track intro, daily reminder, ...
+video_sarah_introduces_herself_30s     ←─┬── composite_001: listening_mc con 3 Qs
+                                          ├── composite_002: free_response sobre lo que dijo
+                                          └── composite_003: roleplay responder a Sarah
+
+img_coffee_shop_interior_v1            ←─┬── composite_004: image_description
+                                          └── composite_005: roleplay "estás en este café"
+```
+
+**Implicación económica:** a 700 composites MVP con reuse factor 2.0
+target → solo ~350 atomics realmente creados. **Costo de creación a la
+mitad.**
+
+### 3.2 Sistema de labels (en lugar de enum AssetType monolítico)
+
+En vez de un enum hardcoded `AssetType`, los assets composites se
+clasifican con **dimensiones independientes**:
+
+```typescript
+interface CompositeAssetLabels {
+  // Formato del media principal del ejercicio
+  primary_media_format: 'text' | 'audio' | 'image' | 'video' | 'multi';
+
+  // Subtipo del media (cuando aplica)
+  primary_media_subtype?:
+    | 'talking_head' | 'scene' | 'animation' | 'screen_recording'  // video
+    | 'illustration' | 'photo' | 'infographic' | 'avatar'          // image
+    | 'tts' | 'cloned_host' | 'native_recording';                  // audio
+
+  // Tipo de interacción pedagógica
+  interaction_type:
+    | 'mc' | 'qa' | 'drill' | 'shadow' | 'free_response'
+    | 'roleplay_structured' | 'roleplay_free'
+    | 'description' | 'fill_blank' | 'translation' | 'ordering' | 'dictation';
+
+  // Pedagogía
+  pedagogical_focus: string[];     // sub-skill IDs
+  duration_seconds?: number;
+  cefr_level: string;
+  target_variant: 'us' | 'uk' | 'neutral';
+
+  // Contexto
+  topic: string[];
+  context_tags: string[];
+  cultural_relevance: string[];
+}
+```
+
+**Ventajas:**
+- Agregar `video_dialogue_complete` no toca un enum, solo combinación
+  nueva de labels.
+- Búsqueda flexible: "todos los videos talking_head de US business B2".
+- Validación combinatoria via matrix (algunas combinaciones no tienen
+  sentido).
+
+### 3.3 Matrix de validez `media_format × interaction_type`
+
+|  | mc | qa | drill | shadow | free_response | roleplay_s | roleplay_f | description | fill_blank | translation | ordering | dictation |
+|--|:--:|:--:|:----:|:------:|:-------------:|:----------:|:----------:|:-----------:|:----------:|:-----------:|:--------:|:---------:|
+| text | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ |
+| audio | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| image | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| video | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| multi | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+`multi` = ejercicio que combina más de un media (ej: video + texto +
+audio).
+
+### 3.4 Characters (consistencia visual + auditiva cross-asset)
+
+Un `character` es una entidad recurrente cross-assets que mantiene
+identidad consistent:
+
+- **Voz fija:** ej. "Sarah la HR" siempre con `voice_us_f_40` del pool.
+- **Apariencia visual fija** (cuando hay video/avatar): mismo prompt
+  base con seeds determinísticos.
+- **Background pedagógico:** ej. Sarah aparece en track Job Ready,
+  context Business.
+
+Permite que el usuario forme **memoria episódica del personaje**
+(reconoce a Sarah cuando aparece en un nuevo ejercicio del track).
+Ver §8.3 para schema.
+
+### 3.5 Reuse stats target
+
+| Métrica | MVP | Fase 2 |
+|---------|----:|-------:|
+| Reuse rate (avg uses por atomic) | ≥ 1.5 | ≥ 2.5 |
+| % de atomics con use_count ≥ 3 | 30% | 50% |
+| Generación cost per composite | ≤ $1.50 | ≤ $1.00 |
+
+Cuando un atomic tiene `use_count = 0` después de 90 días: candidato a
+archivar. Cron mensual flagea.
+
+### 3.6 Detalles específicos en exploración
+
+Los detalles concretos de **generación de video, imagen y audio TTS**
+(qué proveedores, prompts templates, costos por dominio) están en
+[`docs/explorations/multimedia-assets.md`](../explorations/multimedia-assets.md).
+
+Esta sección establece el **modelo de datos y el principio**. La
+implementación específica de cada pipeline de media puede iterarse en
+exploración hasta que se promueva.
+
+---
+
+## 4. Anatomía de un asset
+
+### 4.1 Componentes
 
 ```typescript
 interface LearningAsset {
@@ -150,7 +295,7 @@ interface LearningAsset {
 }
 ```
 
-### 3.2 Tipos de assets
+### 4.2 Tipos de assets
 
 (14 tipos, alineados con `pedagogical-system.md` §5.1.)
 
@@ -234,7 +379,7 @@ interface FreeResponseContent {
 translation, fill_blank, sentence_ordering, image_description,
 dictation, vocabulary_in_context — schema análogo.)
 
-### 3.3 Estándares de calidad
+### 4.3 Estándares de calidad
 
 #### Audios
 
@@ -259,55 +404,67 @@ dictation, vocabulary_in_context — schema análogo.)
 
 ---
 
-## 4. Proceso de creación
+## 5. Proceso de creación
 
-### 4.1 Pipeline
+### 5.1 Pipeline (v1.2: 2 capas, atomic + composite)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  ETAPA 1: PLANIFICACIÓN                                     │
 │  - Identificar gap en biblioteca                            │
 │  - Definir learning objective específico                    │
-│  - Especificar tipo, CEFR, sub-skills target                │
+│  - Especificar labels (media_format, interaction_type, ...) │
+│  - Decidir qué atomics necesita (existentes vs nuevos)      │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  ETAPA 2: GENERACIÓN ASISTIDA POR IA                        │
-│  - Prompt detallado a LLM avanzado (Claude/GPT-4)           │
-│  - Generación de contenido base                             │
-│  - Generación de audios con TTS premium                     │
+│  ETAPA 2: ATOMICS (REUSE FIRST)                             │
+│  - searchAtomics(): buscar atomics existentes que matchen   │
+│  - Para los que faltan: enqueueAtomicGeneration()           │
+│    • Audio: AI Gateway task generate_audio_tts              │
+│    • Image: AI Gateway task generate_image                  │
+│    • Video: AI Gateway tasks generate_video_*               │
+│  - Validation post-generation por atomic                    │
+│  - Persist en media_atomics con approved=false              │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  ETAPA 3: VALIDACIÓN AUTOMÁTICA                             │
-│  - Checks técnicos (formato, estructura, completitud)       │
-│  - Verificación de nivel CEFR                               │
-│  - Verificación de pronunciación de TTS                     │
+│  ETAPA 3: COMPOSICIÓN                                       │
+│  - createAsset() con references a atomics                   │
+│  - Definir interaction_data (preguntas, prompts, flow)      │
+│  - Validar combinación de labels (matrix §3.3)              │
+│  - Validation pedagógica (CEFR, sub-skills cubiertas)       │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  ETAPA 4: REVISIÓN HUMANA (sampling)                        │
-│  - 10-20% de assets revisados manualmente                   │
-│  - Más alto al inicio (50% en MVP), baja con confianza      │
+│  - Atomics: 50% review al inicio, 10% en steady state       │
+│  - Composites: 30% review al inicio, 10% en steady state    │
 │  - Feedback documentado para mejorar prompts                │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  ETAPA 5: A/B TESTING EN PRODUCCIÓN                         │
-│  - Asset se libera a 5-10% de usuarios primero              │
+│  - Composite se libera a 5-10% de usuarios primero          │
 │  - Métricas: completion rate, dificultad percibida, ratings │
 │  - Si performa bien, expansión a 100%                       │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  ETAPA 6: MANTENIMIENTO                                     │
-│  - Tracking continuo de performance                         │
+│  - Tracking continuo de performance (composite + atomics)   │
 │  - Actualización si métricas caen                           │
-│  - Retiro si se vuelve obsoleto                             │
+│  - Retiro de atomics no usados (use_count = 0 por 90 días)  │
+│  - Retiro de composites obsoletos                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 4.2 Generación con IA
+**Reuse first:** antes de generar atomic nuevo, **siempre buscar en
+`media_atomics` existentes**. Match por `media_format + media_subtype +
+voice_id + generation_prompt` (audio) o equivalente para image/video.
+Si match: reuse. Si no: generate.
+
+### 5.2 Generación con IA
 
 Llamada a AI Gateway tasks:
 - `generate_asset_content` (texto del asset).
@@ -361,7 +518,7 @@ ESTRUCTURA REQUERIDA:
 DEVOLVÉ JSON exacto siguiendo el schema RoleplayContent.
 ```
 
-### 4.3 Validación automática
+### 5.3 Validación automática
 
 ```typescript
 async function validateAsset(asset: LearningAsset): Promise<ValidationResult> {
@@ -407,7 +564,7 @@ async function validateAsset(asset: LearningAsset): Promise<ValidationResult> {
 }
 ```
 
-### 4.4 Revisión humana
+### 5.4 Revisión humana
 
 #### Quién revisa
 
@@ -456,9 +613,9 @@ Feedback se incorpora a versiones futuras del prompt.
 
 ---
 
-## 5. Bloques (composiciones)
+## 6. Bloques (composiciones)
 
-### 5.1 Estructura
+### 6.1 Estructura
 
 Un bloque (`learning_block`) compone múltiples assets:
 
@@ -491,7 +648,7 @@ interface LearningBlock {
 }
 ```
 
-### 5.2 Composición típica
+### 6.2 Composición típica
 
 3-5 assets de tipos variados que abordan misma sub-skill desde
 ángulos diferentes.
@@ -507,9 +664,9 @@ Total estimado: ~13 min.
 
 ---
 
-## 6. Cobertura inicial y roadmap
+## 7. Cobertura inicial y roadmap
 
-### 6.1 MVP target
+### 7.1 MVP target
 
 | Track | Niveles | Bloques/nivel | Total bloques | Assets/bloque | Total assets |
 |-------|--------:|--------------:|--------------:|--------------:|-------------:|
@@ -529,7 +686,7 @@ por asset, son ~350 horas de trabajo.
 - ~100 free response prompts (estructurados simples).
 - ~100 vocabulary in context (estructurados).
 
-### 6.2 Roadmap de expansión
+### 7.2 Roadmap de expansión
 
 | Mes | Nuevos assets | Nuevos tracks |
 |-----|--------------:|---------------|
@@ -541,7 +698,7 @@ por asset, son ~350 horas de trabajo.
 
 A 24 meses: ~3.500 assets cubriendo 8+ tracks.
 
-### 6.3 Cobertura de sub-skills
+### 7.3 Cobertura de sub-skills
 
 Cada sub-skill debe tener mínimo:
 - 5 assets en CEFR B1.
@@ -553,17 +710,171 @@ cobertura mínima. Solapa con tracks pero da baseline.
 
 ---
 
-## 7. Schemas Postgres
+## 8. Schemas Postgres
 
-### 7.1 Tabla `learning_assets`
+### 8.1 Tabla `media_atomics` (NUEVA en v1.2)
+
+Pieza individual de media (audio, imagen, video) reutilizable
+cross-assets.
+
+```sql
+CREATE TABLE media_atomics (
+  id              TEXT PRIMARY KEY,             -- 'audio_anita_intro_jr_v1'
+  version         TEXT NOT NULL DEFAULT '1.0.0',
+
+  -- Tipo
+  media_format    TEXT NOT NULL CHECK (media_format IN (
+                    'audio', 'image', 'video'
+                  )),
+  media_subtype   TEXT NOT NULL,
+  -- audio: 'tts', 'cloned_host', 'native_recording'
+  -- image: 'illustration', 'photo', 'avatar', 'infographic'
+  -- video: 'talking_head', 'scene', 'animation', 'screen_recording'
+
+  -- Storage
+  storage_key     TEXT NOT NULL UNIQUE,         -- key en R2
+  storage_provider TEXT NOT NULL DEFAULT 'r2',
+  duration_ms     INT,                          -- audio/video
+  width           INT,                          -- image/video
+  height          INT,                          -- image/video
+  file_size_bytes INT NOT NULL,
+  mime_type       TEXT NOT NULL,
+
+  -- Metadata pedagógica/cultural
+  language        TEXT NOT NULL DEFAULT 'en',
+  english_variant TEXT NOT NULL DEFAULT 'us',
+  cultural_relevance TEXT[] DEFAULT '{}',
+
+  -- Audio specific
+  voice_id        TEXT,                         -- 'voice_anita_host', 'voice_us_f_25'
+  speed           NUMERIC(3,2),                 -- 0.85, 1.0, 1.15
+
+  -- Video specific
+  has_audio       BOOLEAN DEFAULT true,
+  character_id    TEXT REFERENCES characters(id) DEFERRABLE INITIALLY DEFERRED,
+
+  -- Image specific
+  is_text_in_image BOOLEAN DEFAULT false,       -- OCR result; debe ser false para image_description
+
+  -- Generation metadata
+  generated_by    TEXT NOT NULL,                -- 'ai_dalle3', 'ai_hedra', 'ai_elevenlabs', 'manual', 'lottie_template'
+  generation_cost_usd NUMERIC(10,4),
+  generation_seed INT,
+  generation_prompt TEXT,
+
+  -- Lifecycle
+  approved        BOOLEAN NOT NULL DEFAULT false,
+  archived        BOOLEAN NOT NULL DEFAULT false,
+  archived_at     TIMESTAMPTZ,
+  archive_reason  TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_at     TIMESTAMPTZ,
+  reviewed_by     TEXT,
+
+  -- Reuse tracking (denormalized counter, recalculado por cron)
+  use_count       INT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_atomics_format_subtype
+  ON media_atomics(media_format, media_subtype)
+  WHERE approved = true AND archived = false;
+CREATE INDEX idx_atomics_voice ON media_atomics(voice_id)
+  WHERE media_format = 'audio' AND voice_id IS NOT NULL;
+CREATE INDEX idx_atomics_character ON media_atomics(character_id)
+  WHERE character_id IS NOT NULL;
+CREATE INDEX idx_atomics_high_reuse ON media_atomics(use_count DESC)
+  WHERE approved = true;
+CREATE INDEX idx_atomics_unused
+  ON media_atomics(created_at)
+  WHERE use_count = 0 AND approved = true;
+```
+
+### 8.2 Tabla `characters` (NUEVA en v1.2)
+
+Entidad recurrente cross-assets (Sarah la HR, Mike el barista) con
+identidad consistent.
+
+```sql
+CREATE TABLE characters (
+  id              TEXT PRIMARY KEY,             -- 'character_sarah_hr'
+  name            TEXT NOT NULL,                -- 'Sarah'
+  description     TEXT NOT NULL,                -- prompt fijo para imagen
+  voice_id        TEXT NOT NULL,                -- voz de pool del producto
+  avatar_atomic_id TEXT REFERENCES media_atomics(id),
+  default_video_avatar_id TEXT,                 -- HeyGen/Hedra avatar id
+
+  -- Persona
+  age_range       TEXT,                         -- '25-35'
+  occupation      TEXT,                         -- 'HR Manager'
+  cultural_background TEXT,                     -- 'us_general', 'us_latino_heritage'
+
+  -- Tracks donde aparece
+  appears_in_tracks TEXT[] DEFAULT '{}',
+
+  archived        BOOLEAN NOT NULL DEFAULT false,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_characters_active ON characters(id) WHERE archived = false;
+```
+
+### 8.3 Tabla `atomic_generation_queue` (NUEVA en v1.2)
+
+Queue para batch generation nocturna de atomics nuevos.
+
+```sql
+CREATE TABLE atomic_generation_queue (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  requested_for_asset_id TEXT,                  -- composite que necesita el atomic
+  media_format    TEXT NOT NULL,
+  media_subtype   TEXT NOT NULL,
+  prompt          TEXT NOT NULL,
+  config          JSONB NOT NULL,               -- voice_id, style, seed, etc.
+  priority        INT NOT NULL DEFAULT 5,       -- 1=critical, 10=low
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'generating', 'completed', 'failed')),
+  result_atomic_id TEXT REFERENCES media_atomics(id),
+  attempts        INT NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at      TIMESTAMPTZ,
+  completed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX idx_atomic_queue_pending
+  ON atomic_generation_queue(priority, created_at)
+  WHERE status = 'pending';
+CREATE INDEX idx_atomic_queue_failed
+  ON atomic_generation_queue(created_at DESC)
+  WHERE status = 'failed';
+```
+
+### 8.4 Tabla `learning_assets` (modificada en v1.2)
+
+Composites: ejercicios pedagógicos que referencian atomics.
 
 ```sql
 CREATE TABLE learning_assets (
   id              TEXT PRIMARY KEY,
   version         TEXT NOT NULL DEFAULT '1.0.0',
 
+  -- Labels (v1.2: en lugar de enum 'type' monolítico)
+  primary_media_format TEXT NOT NULL CHECK (primary_media_format IN (
+                    'text', 'audio', 'image', 'video', 'multi'
+                  )),
+  primary_media_subtype TEXT,
+  interaction_type TEXT NOT NULL CHECK (interaction_type IN (
+                    'mc', 'qa', 'drill', 'shadow', 'free_response',
+                    'roleplay_structured', 'roleplay_free',
+                    'description', 'fill_blank', 'translation',
+                    'ordering', 'dictation'
+                  )),
+
+  -- DEPRECATED en v1.2 pero se mantiene para compatibilidad migration
+  -- type            TEXT,
+
   -- Clasificación
-  type            TEXT NOT NULL,
   cefr_level      TEXT NOT NULL,
   difficulty      INT NOT NULL CHECK (difficulty BETWEEN 1 AND 10),
   estimated_minutes INT NOT NULL,
@@ -576,11 +887,28 @@ CREATE TABLE learning_assets (
   -- Contexto
   topic           TEXT[] NOT NULL,
   context_tags    TEXT[] DEFAULT '{}',
-  english_variant TEXT NOT NULL DEFAULT 'neutral',
+  english_variant TEXT NOT NULL DEFAULT 'neutral'
+                  CHECK (english_variant IN ('us', 'uk', 'neutral')),
   cultural_relevance TEXT[] DEFAULT '{}',
 
-  -- Contenido (JSONB porque varía por type)
-  content         JSONB NOT NULL,
+  -- Atomics referenced (v1.2: reemplaza media inline en content)
+  -- Shape:
+  -- [
+  --   { "atomic_id": "audio_anita_intro_jr_v1", "role": "main_audio" },
+  --   { "atomic_id": "img_coffee_shop_v1",     "role": "background_image" },
+  --   { "atomic_id": "video_sarah_intro_30s",  "role": "main_video",
+  --     "position": { "start_ms": 0, "end_ms": 30000 } }
+  -- ]
+  media_atomics   JSONB NOT NULL DEFAULT '[]',
+
+  -- Interaction-specific data (no media; solo preguntas, prompts, flow)
+  -- Shape varía por interaction_type:
+  -- mc: { questions: [{q, options, correct}] }
+  -- qa: { questions: [{q, expected_topics}] }
+  -- roleplay_structured: { flow: [...] }
+  -- free_response: { prompt, expected_topics }
+  -- ...
+  interaction_data JSONB NOT NULL DEFAULT '{}',
 
   -- Metadata
   created_by      TEXT NOT NULL,
@@ -611,7 +939,7 @@ CREATE INDEX idx_assets_cefr_active
   WHERE approved = true AND archived = false;
 ```
 
-### 7.2 Tabla `learning_blocks`
+### 8.5 Tabla `learning_blocks`
 
 ```sql
 CREATE TABLE learning_blocks (
@@ -637,7 +965,7 @@ CREATE INDEX idx_blocks_subskills
   WHERE approved = true AND archived = false;
 ```
 
-### 7.3 Tabla de versiones
+### 8.6 Tabla de versiones
 
 ```sql
 CREATE TABLE asset_versions (
@@ -656,7 +984,7 @@ CREATE INDEX idx_asset_versions_asset
 
 Análogo `block_versions`.
 
-### 7.4 Tabla de feedback
+### 8.7 Tabla de feedback
 
 ```sql
 CREATE TABLE asset_feedback (
@@ -673,7 +1001,7 @@ CREATE INDEX idx_feedback_asset
   ON asset_feedback(asset_id, created_at DESC);
 ```
 
-### 7.5 Performance tracking
+### 8.8 Performance tracking
 
 Job nocturno actualiza counters denormalizados en `learning_assets`
 desde `exercise_attempts`:
@@ -700,29 +1028,176 @@ WHERE la.id = stats.asset_id;
 
 ---
 
-## 8. API contracts
+## 9. API contracts
 
-### 8.1 `getAsset`
+### 9.1 `getAsset`
 
 **Llamado por:** cliente cuando carga un asset.
 
 ```typescript
 interface GetAssetRequest {
   asset_id: string;
+  user_country?: string;             // para resolver annotations al país (Fase 2)
 }
 
 interface GetAssetResponse {
   asset: LearningAsset;
-  signed_audio_urls?: Record<string, string>;  // signed URLs para audios
+  resolved_atomics: Array<{
+    atomic_id: string;
+    role: string;
+    media_format: 'audio' | 'image' | 'video';
+    signed_url: string;              // R2 signed URL, TTL 5 min
+    duration_ms?: number;
+    width?: number;
+    height?: number;
+    mime_type: string;
+  }>;
+}
+```
+
+**Reglas v1.2:**
+- Solo retorna assets con `approved = true` y `archived = false`
+  (excepto si user lo está completando: snapshot version).
+- Resuelve cada `media_atomics` reference a signed URL con TTL 5 min.
+- Si algún atomic está archived: rechazar el asset (es bug del
+  composite).
+- Cliente cachea signed URLs ~4 min y refetcha si expira.
+
+### 9.2 `getAtomic` (NUEVA en v1.2)
+
+**Llamado por:** cliente cuando necesita re-fetch un signed URL
+expirado, o admin para review individual.
+
+```typescript
+interface GetAtomicRequest {
+  atomic_id: string;
+}
+
+interface GetAtomicResponse {
+  atomic: MediaAtomic;
+  signed_url: string;                // TTL 5 min
+}
+```
+
+### 9.3 `searchAtomics` (NUEVA en v1.2, admin only)
+
+Permite buscar atomics existentes antes de generar uno nuevo (reuse
+first).
+
+```typescript
+interface SearchAtomicsRequest {
+  filters: {
+    media_format?: 'audio' | 'image' | 'video';
+    media_subtype?: string;
+    voice_id?: string;
+    character_id?: string;
+    english_variant?: string;
+    generation_prompt_substring?: string;
+    approved?: boolean;
+    archived?: boolean;
+    min_use_count?: number;
+  };
+  limit?: number;
+  offset?: number;
+  order_by?: 'use_count_desc' | 'created_at_desc' | 'use_count_asc';
+}
+
+interface SearchAtomicsResponse {
+  atomics: MediaAtomic[];
+  total: number;
+}
+```
+
+### 9.4 `createAtomicFromGeneration` (NUEVA en v1.2, internal)
+
+**Llamado por:** pipeline de generación al completar atomic batch.
+
+```typescript
+interface CreateAtomicRequest {
+  draft: Partial<MediaAtomic>;
+  storage_key: string;               // ya subido a R2
+  generation_metadata: {
+    generated_by: string;
+    cost_usd: number;
+    seed?: number;
+    prompt: string;
+  };
+}
+
+interface CreateAtomicResponse {
+  atomic_id: string;
+  validation_result: AtomicValidationResult;
+  needs_human_review: boolean;
+}
+```
+
+**Validation incluye:**
+- Audio: duration > 1s, file size razonable, sample rate válido.
+- Image: resolution mínima, aspect ratio target, OCR check
+  (`is_text_in_image`).
+- Video: codec H.264, duration en rango (5-60s), bitrate.
+
+### 9.5 `approveAtomic` (NUEVA en v1.2, admin)
+
+```typescript
+interface ApproveAtomicRequest {
+  atomic_id: string;
+  reviewed_by: string;
+  notes?: string;
+}
+```
+
+Marca `approved = true` y `reviewed_at`.
+
+### 9.6 `archiveAtomic` (NUEVA en v1.2)
+
+```typescript
+interface ArchiveAtomicRequest {
+  atomic_id: string;
+  reason: string;
+  replaced_by_atomic_id?: string;    // si se reemplaza por nueva versión
 }
 ```
 
 **Reglas:**
-- Solo retorna assets con `approved = true` y `archived = false`
-  (excepto si user lo está completando: snapshot version).
-- Audios de R2 vía signed URLs con TTL 5 min.
+- Si `use_count > 0`: warn pero permitir; assets que lo usan deben
+  migrar a `replaced_by_atomic_id` o ser archivados también.
+- Cron mensual flagea atomics con `use_count = 0` durante 90 días para
+  archivado automático.
 
-### 8.2 `getBlock`
+### 9.7 `enqueueAtomicGeneration` (NUEVA en v1.2, internal)
+
+Para batch generation nocturna:
+
+```typescript
+interface EnqueueAtomicGenerationRequest {
+  media_format: 'audio' | 'image' | 'video';
+  media_subtype: string;
+  prompt: string;
+  config: Record<string, unknown>;   // voice_id, style, seed, etc.
+  priority?: number;                 // 1-10
+  requested_for_asset_id?: string;
+}
+```
+
+Inserta row en `atomic_generation_queue` con `status = 'pending'`.
+
+### 9.8 `getCharacter` (NUEVA en v1.2)
+
+```typescript
+interface GetCharacterRequest {
+  character_id: string;
+}
+
+interface GetCharacterResponse {
+  character: Character;
+  signed_avatar_url?: string;        // si tiene avatar_atomic_id
+}
+```
+
+### 9.9 `getBlock`
+
+**Llamado por:** cliente cuando carga un bloque.
 
 ```typescript
 interface GetBlockRequest {
@@ -740,7 +1215,26 @@ interface GetBlockResponse {
 }
 ```
 
-### 8.3 `searchAssets` (admin)
+### 9.10 `getAssetLegacy`
+
+(Preservado para retro-compat durante migration v1.1 → v1.2.)
+
+```typescript
+interface GetAssetLegacyRequest {
+  asset_id: string;
+}
+
+interface GetAssetLegacyResponse {
+  asset: LearningAsset;
+  signed_audio_urls?: Record<string, string>;
+}
+```
+
+**Reglas:**
+- Solo retorna assets con `approved = true` y `archived = false`.
+- Audios de R2 vía signed URLs con TTL 5 min.
+
+### 9.11 `searchAssets` (admin)
 
 ```typescript
 interface SearchAssetsRequest {
@@ -762,7 +1256,7 @@ interface SearchAssetsResponse {
 }
 ```
 
-### 8.4 `submitAssetFeedback`
+### 9.12 `submitAssetFeedback`
 
 **Llamado por:** cliente si user reporta problema con asset.
 
@@ -776,7 +1270,7 @@ interface SubmitAssetFeedbackRequest {
 }
 ```
 
-### 8.5 Internal: `createAsset` (admin/pipeline)
+### 9.13 Internal: `createAsset` (admin/pipeline)
 
 ```typescript
 interface CreateAssetRequest {
@@ -791,7 +1285,7 @@ interface CreateAssetResponse {
 }
 ```
 
-### 8.6 Internal: `approveAsset` (admin)
+### 9.14 Internal: `approveAsset` (admin)
 
 ```typescript
 interface ApproveAssetRequest {
@@ -801,7 +1295,7 @@ interface ApproveAssetRequest {
 }
 ```
 
-### 8.7 Internal: `archiveAsset`
+### 9.15 Internal: `archiveAsset`
 
 ```typescript
 interface ArchiveAssetRequest {
@@ -819,9 +1313,9 @@ interface ArchiveAssetRequest {
 
 ---
 
-## 9. Mantenimiento
+## 10. Mantenimiento
 
-### 9.1 Reglas automáticas
+### 10.1 Reglas automáticas
 
 | Condición | Acción |
 |-----------|--------|
@@ -832,7 +1326,7 @@ interface ArchiveAssetRequest {
 | `flagged_count > 5%` de uses | Revisión inmediata; posible problema de calidad |
 | `uses_last_30d == 0` | Considerar retirar si no es relevante |
 
-### 9.2 Versionado de assets
+### 10.2 Versionado de assets
 
 Cuando un asset se actualiza:
 - Mantiene versión vieja para users que ya lo iniciaron.
@@ -840,7 +1334,7 @@ Cuando un asset se actualiza:
 - Trackea performance de ambas versiones.
 - Versión vieja se retira cuando ningún user activo la está usando.
 
-### 9.3 Retirement gradual
+### 10.3 Retirement gradual
 
 ```
 Asset obsoleto detectado
@@ -852,7 +1346,7 @@ Users actuales pueden completar (snapshot)
 Después de 3 meses sin uso: borrar físicamente
 ```
 
-### 9.4 A/B testing de assets
+### 10.4 A/B testing de assets
 
 Cuando se crea v2 de un asset existente:
 1. v2 se libera al 5% de users.
@@ -862,9 +1356,9 @@ Cuando se crea v2 de un asset existente:
 
 ---
 
-## 10. Stack tecnológico
+## 11. Stack tecnológico
 
-### 10.1 Para generación
+### 11.1 Para generación
 
 | Componente | Tecnología | Uso |
 |-----------|-----------|-----|
@@ -874,7 +1368,7 @@ Cuando se crea v2 de un asset existente:
 | Audio editing | FFmpeg pipelines automatizadas | Normalización, trim |
 | Validation LLM | AI Gateway task `validate_asset_cefr` (Haiku) | Validación post-generación |
 
-### 10.2 Para curaduría
+### 11.2 Para curaduría
 
 | Componente | Tecnología | Uso |
 |-----------|-----------|-----|
@@ -884,7 +1378,7 @@ Cuando se crea v2 de un asset existente:
 | Search | Postgres full-text + pgvector | Búsqueda en biblioteca |
 | Diff/version control | Custom sobre Postgres | Tracking de cambios |
 
-### 10.3 Para tracking
+### 11.3 Para tracking
 
 | Componente | Tecnología | Uso |
 |-----------|-----------|-----|
@@ -892,7 +1386,7 @@ Cuando se crea v2 de un asset existente:
 | Feedback | Custom + API | Flagging y ratings |
 | Dashboard | Internal admin | Vista por asset y agregada |
 
-### 10.4 Costos de creación
+### 11.4 Costos de creación
 
 **Estimado para 700 assets MVP:**
 
@@ -907,9 +1401,9 @@ humano).
 
 ---
 
-## 11. Edge cases (tests obligatorios)
+## 12. Edge cases (tests obligatorios)
 
-### 11.1 Generación
+### 12.1 Generación
 
 1. **LLM devuelve roleplay con C1 vocab para B2:** validation falla
    `cefr_match`; retry con prompt más estricto.
@@ -918,7 +1412,7 @@ humano).
 3. **Roleplay generado tiene branching loop infinito:** validation
    detecta ciclo, rechaza.
 
-### 11.2 Versioning
+### 12.2 Versioning
 
 4. **Asset v1 in-use por user, admin sube v2:** user completa v1
    (snapshot). Próximos users ven v2.
@@ -926,7 +1420,7 @@ humano).
    advierte "este ejercicio se actualizó" pero permite completar v1
    sin interrupción.
 
-### 11.3 Archivado
+### 12.3 Archivado
 
 6. **Asset archived que sigue en bloques activos:** bloque también se
    marca para review; admin decide remover/reemplazar.
@@ -934,7 +1428,7 @@ humano).
    archivada con flag `is_archived = true`. Cliente muestra advertencia
    pero permite (snapshot).
 
-### 11.4 Performance
+### 12.4 Performance
 
 8. **Asset nuevo con 0 uses tiene NULL en avg_score:** UI no muestra
    "0%" sino "Datos insuficientes". Algoritmos de selección lo tratan
@@ -942,13 +1436,13 @@ humano).
 9. **Asset con 100% completion pero rating bajo:** flag para review
    manual. Posible asset demasiado fácil pero aburrido.
 
-### 11.5 Concurrencia
+### 12.5 Concurrencia
 
 10. **Dos admins intentan editar mismo asset:** optimistic locking via
     `updated_at` en WHERE clause. Segundo recibe error "asset cambió,
     refrescá".
 
-### 11.6 Feedback
+### 12.6 Feedback
 
 11. **User flag asset 5 veces:** rate limit max 1 flag por user por
     asset por 24h. Repeated flags se ignoran.
@@ -957,9 +1451,9 @@ humano).
 
 ---
 
-## 12. Eventos
+## 13. Eventos
 
-### 12.1 Emitidos
+### 13.1 Emitidos
 
 | Evento | Cuándo |
 |--------|--------|
@@ -971,7 +1465,7 @@ humano).
 | `block.created` | Bloque nuevo creado |
 | `block.archived` | Bloque retirado |
 
-### 12.2 Consumidos
+### 13.2 Consumidos
 
 | Evento | Acción |
 |--------|--------|
@@ -979,32 +1473,32 @@ humano).
 
 ---
 
-## 13. Decisiones cerradas
+## 14. Decisiones cerradas
 
-### 13.1 Crowdsource de assets de la comunidad: **NO en MVP** ✓
+### 14.1 Crowdsource de assets de la comunidad: **NO en MVP** ✓
 
 **Razón:** calidad variable + moderación intensiva. Reconsiderar año
 2 con community manager dedicado.
 
-### 13.2 Licenciar contenido existente de proveedores: **NO en MVP** ✓
+### 14.2 Licenciar contenido existente de proveedores: **NO en MVP** ✓
 
 **Razón:** dificultad de licensing + control reducido. Crear propio
 desde día 1.
 
-### 13.3 Generar assets en runtime para users con perfiles únicos:
+### 14.3 Generar assets en runtime para users con perfiles únicos:
 **NO** ✓
 
 **Razón:** principio rector "IA cura, no inventa". Costos altos +
 calidad variable + imposible validar pedagógicamente. Ese path se
 rechaza permanentemente.
 
-### 13.4 Cómo balancear velocidad de creación con calidad: **calidad
+### 14.4 Cómo balancear velocidad de creación con calidad: **calidad
 siempre** ✓
 
 **Razón:** mejor menos assets buenos. Reputación del producto depende
 de calidad consistente. Velocidad es problema solucionable después.
 
-### 13.5 Versionado: **semver con releases major.minor only** ✓
+### 14.5 Versionado: **semver con releases major.minor only** ✓
 
 **Razón:** patches no agregan valor para assets (no son código).
 Major: breaking change pedagógico. Minor: mejora notable. Cualquier
@@ -1012,9 +1506,9 @@ cambio bumpea version.
 
 ---
 
-## 14. Plan de implementación
+## 15. Plan de implementación
 
-### 14.1 Fase 0: Pre-MVP (mes -1)
+### 15.1 Fase 0: Pre-MVP (mes -1)
 
 - Schema completo en Postgres.
 - Admin panel básico para review.
@@ -1023,26 +1517,26 @@ cambio bumpea version.
 - Storage en R2.
 - Templates por tipo.
 
-### 14.2 Fase 1: Creación inicial (meses 0–3)
+### 15.2 Fase 1: Creación inicial (meses 0–3)
 
 - Mes 0-1: 250 assets (Job Ready completo).
 - Mes 1-2: 250 assets (Travel + Daily).
 - Mes 2-3: 200 assets de refinamiento + cobertura sub-skills.
 
-### 14.3 Fase 2: Iteración (meses 3–6)
+### 15.3 Fase 2: Iteración (meses 3–6)
 
 - Tracking de performance.
 - Re-trabajar 10-20% peores performers.
 - Crear assets nuevos en gaps.
 - Expandir biblioteca a 1.200 assets.
 
-### 14.4 Fase 3: Escala (meses 6–12)
+### 15.4 Fase 3: Escala (meses 6–12)
 
 - 2-3 nuevos tracks.
 - 2.500 assets.
 - Documentar patrones que funcionan.
 
-### 14.5 Fase 4: Sofisticación (año 2+)
+### 15.5 Fase 4: Sofisticación (año 2+)
 
 - Generación procedural avanzada (assets parametrizados).
 - Community-contributed con moderación.
@@ -1051,9 +1545,9 @@ cambio bumpea version.
 
 ---
 
-## 15. Métricas
+## 16. Métricas
 
-### 15.1 Calidad de la biblioteca
+### 16.1 Calidad de la biblioteca
 
 | Métrica | Definición | Target MVP | Target 12m |
 |---------|-----------|-----------:|-----------:|
@@ -1063,14 +1557,14 @@ cambio bumpea version.
 | Pass rate validación | % que pasan sin re-trabajo | 70% | 95% |
 | Cost per asset | USD | $5 | $3 |
 
-### 15.2 Eficiencia del proceso
+### 16.2 Eficiencia del proceso
 
 - Time to publish: tiempo desde concepción hasta producción.
 - Pass rate validación.
 - Human review time per asset.
 - Cost per asset.
 
-### 15.3 Alertas
+### 16.3 Alertas
 
 - > 30% de users struggling en mismo bloque: bloque mal calibrado.
 - Sub-skill nunca mastered por nadie: criterios irreales.
@@ -1078,7 +1572,7 @@ cambio bumpea version.
 
 ---
 
-## 16. Referencias internas
+## 17. Referencias internas
 
 | Documento | Relación |
 |-----------|----------|

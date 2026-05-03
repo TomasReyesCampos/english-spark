@@ -547,6 +547,106 @@ interface RollbackCriteria {
 },
 ```
 
+#### 4.2.9 Tasks de generación de assets multimedia (v1.2)
+
+Foundational para el modelo atomic+composite del
+`content-creation-system`. Generan piezas de media reutilizables
+(atomics) que después se referencian desde múltiples composites.
+
+```typescript
+'generate_audio_tts': {
+  description: 'Generar audio TTS atomic para reutilización cross-asset',
+  category: 'batch',
+  input_schema: z.object({
+    text: z.string().max(5000),
+    voice_id: z.string(),               // 'voice_anita_host', 'voice_us_f_25', ...
+    target_variant: z.enum(['us', 'uk']),
+    speed: z.number().min(0.5).max(2.0).default(1.0),
+    emotion: z.enum(['neutral', 'friendly', 'serious']).default('neutral'),
+    audio_format: z.enum(['mp3_128k', 'mp3_192k', 'pcm_22050']).default('mp3_128k'),
+  }),
+  output_schema: z.object({
+    storage_key: z.string(),            // path en R2
+    duration_ms: z.number(),
+    file_size_bytes: z.number(),
+    voice_used: z.string(),
+  }),
+  primary: {
+    provider: 'elevenlabs',
+    model: 'eleven_multilingual_v2',
+    prompt_version: 'n/a',
+  },
+  fallback_chain: [
+    { provider: 'azure', model: 'tts-en-us-neural', prompt_version: 'n/a' },
+  ],
+  max_cost_usd: 0.05,
+  timeout_ms: 60000,
+  retry_policy: { max_attempts: 2, backoff_ms: 3000 },
+  quality_threshold: 0.95,
+  sparks_operation_id: null,            // batch creation, no user-facing
+},
+
+'generate_image': {
+  description: 'Generar imagen atomic (illustration, scene, avatar, etc.)',
+  category: 'batch',
+  input_schema: z.object({
+    prompt: z.string(),
+    style: z.enum(['photorealistic', 'flat_illustration', 'minimal',
+                   'cartoon']),
+    aspect_ratio: z.enum(['1:1', '16:9', '9:16', '4:3']).default('16:9'),
+    quality: z.enum(['standard', 'hd']).default('standard'),
+    seed: z.number().optional(),        // para reproducibilidad
+  }),
+  output_schema: z.object({
+    storage_key: z.string(),
+    width: z.number(),
+    height: z.number(),
+    file_size_bytes: z.number(),
+    mime_type: z.literal('image/webp'),
+  }),
+  primary: {
+    provider: 'openai',
+    model: 'dall-e-3',
+    prompt_version: 'n/a',
+  },
+  fallback_chain: [
+    { provider: 'fal', model: 'flux-pro-1.1', prompt_version: 'n/a' },
+  ],
+  max_cost_usd: 0.10,
+  timeout_ms: 30000,
+  retry_policy: { max_attempts: 2, backoff_ms: 2000 },
+  quality_threshold: 0.95,
+  sparks_operation_id: null,
+},
+
+'validate_image_no_text': {
+  description: 'OCR check sobre imagen generada para asegurar ausencia de texto',
+  category: 'batch',
+  input_schema: z.object({
+    image_url: z.string(),
+  }),
+  output_schema: z.object({
+    has_text: z.boolean(),
+    detected_text: z.string().optional(),
+  }),
+  primary: {
+    provider: 'openai',
+    model: 'gpt-4o-mini',           // vision-capable
+    prompt_version: 'v1_gpt4o_mini',
+  },
+  max_cost_usd: 0.01,
+  timeout_ms: 10000,
+  retry_policy: { max_attempts: 1, backoff_ms: 1000 },
+  quality_threshold: 0.99,
+},
+```
+
+**Nota v1.2:** tasks de generación de **video** (talking head, scene)
+están en exploración en
+[`docs/explorations/multimedia-assets.md`](../explorations/multimedia-assets.md)
+§10. Se promoverán cuando se decida el provider final
+(HeyGen vs Hedra para talking head, Runway para scene).
+
 ### 4.3 Persistencia del Registry
 
 Archivo TypeScript versionado en repo:

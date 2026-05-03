@@ -764,6 +764,51 @@ interface AiTaskCompletedPayload {
 }
 ```
 
+### 5.12 Content Creation: Atomics y Composites (v1.2)
+
+```typescript
+// atomic.generated
+interface AtomicGeneratedPayload {
+  atomic_id: string;
+  media_format: 'audio' | 'image' | 'video';
+  media_subtype: string;
+  generated_by: string;        // 'ai_dalle3', 'ai_elevenlabs', ...
+  cost_usd: number;
+  duration_ms?: number;
+  needs_human_review: boolean;
+}
+
+// atomic.approved
+interface AtomicApprovedPayload {
+  atomic_id: string;
+  reviewed_by: string;
+}
+
+// atomic.archived
+interface AtomicArchivedPayload {
+  atomic_id: string;
+  reason: string;
+  use_count_at_archive: number;
+  replaced_by_atomic_id?: string;
+}
+
+// atomic.reuse_threshold_reached
+// Emitido cuando un atomic alcanza use_count = 5 (high-value asset)
+interface AtomicReuseThresholdPayload {
+  atomic_id: string;
+  use_count: number;
+  total_cost_amortized_usd: number;
+}
+
+// composite.created
+interface CompositeCreatedPayload {
+  asset_id: string;
+  primary_media_format: string;
+  interaction_type: string;
+  atomic_ids_referenced: string[];
+}
+```
+
 ---
 
 ## 6. Product events (PostHog)

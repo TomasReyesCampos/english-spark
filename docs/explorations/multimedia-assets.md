@@ -1,8 +1,24 @@
 # Exploración: Estrategia de assets multimedia (audio, imagen, video)
 
-> **Status:** Exploración (no es spec final).
+> **Status:** **Parcialmente promovido a spec en v1.2 (2026-05).**
+> Modelo atomic+composite, sistema de labels, schemas
+> `media_atomics`/`characters`/`atomic_generation_queue`, y tasks
+> `generate_audio_tts`/`generate_image`/`validate_image_no_text` ya
+> están en specs:
+> - [`../product/content-creation-system.md`](../product/content-creation-system.md)
+>   §3, §8.1-§8.4, §9.2-§9.8
+> - [`../architecture/ai-gateway-strategy.md`](../architecture/ai-gateway-strategy.md)
+>   §4.2.9
+> - [`../architecture/01-overview.md`](../architecture/01-overview.md) §4.9
+> - [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) §5.12
+>
+> **Sigue en exploración:** specifics de generación de video (HeyGen
+> vs Hedra, Runway provider config), pipelines completos de Lottie y
+> screen recordings, voice library final del producto.
+>
 > **Owner:** —
-> **Target de implementación:** parte en MVP, parte en Fase 2 (mes 4–6).
+> **Target de implementación:** atomic model en MVP. Generación masiva
+> de video se difiere a Fase 2 (mes 4–6).
 > **Audiencia:** agente AI implementador + humano revisor.
 
 ---

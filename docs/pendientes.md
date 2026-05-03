@@ -225,11 +225,14 @@ existentes pero aún no se han creado:
   - 6 decisiones abiertas por cerrar antes de implementar (ver §9 del
     doc).
 
-- [ ] **Estrategia de assets multimedia (audio, imagen, video)** —
-  diseño detallado en
+- [x] **Estrategia de assets multimedia (audio, imagen, video)** —
+  **PARCIALMENTE PROMOVIDO en v1.2 (2026-05).** Diseño detallado en
   [`docs/explorations/multimedia-assets.md`](explorations/multimedia-assets.md).
-  Target: parte en MVP, parte en Fase 2. **Promover el modelo
-  atomic→composite ANTES del MVP** porque es core del unit economics.
+  Promovido a spec: modelo atomic+composite, sistema de labels,
+  schemas (`media_atomics`, `characters`, `atomic_generation_queue`),
+  tasks IA foundational (`generate_audio_tts`, `generate_image`,
+  `validate_image_no_text`). Sigue en exploración: video generation
+  pipelines (HeyGen/Hedra/Runway), voice library final.
   Toca `content-creation-system`, `pedagogical-system`,
   `ai-gateway-strategy`, `sparks-system`. Incluye:
   - Sistema de labels que descompone `AssetType` en dimensiones.

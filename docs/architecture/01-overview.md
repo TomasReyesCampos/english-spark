@@ -364,7 +364,10 @@ solo pueden leer vía API/eventos, nunca acceso directo a la tabla.
 
 ### 4.9 Tablas de Content Creation
 
-- `learning_assets`
+- `media_atomics` (v1.2: pieza individual de media reutilizable)
+- `characters` (v1.2: identidad consistent cross-asset)
+- `atomic_generation_queue` (v1.2: queue para batch generation)
+- `learning_assets` (v1.2: composites con refs a atomics)
 - `learning_blocks` (autoritativo aquí)
 - `asset_versions`
 - `asset_feedback`
