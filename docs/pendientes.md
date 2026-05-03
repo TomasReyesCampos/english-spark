@@ -211,6 +211,20 @@ existentes pero aún no se han creado:
   ✓ creado.
 - [x] `docs/ops/cicd.md` — Pipelines de CI/CD. ✓ creado.
 
+### 4.1 Exploraciones (no son spec final aún)
+
+- [ ] **Annotations culturales / coloquiales** — diseño detallado en
+  [`docs/explorations/cultural-annotations.md`](explorations/cultural-annotations.md).
+  Target: Fase 2 (mes 4–6 post-MVP). Toca `content-creation-system`,
+  `pedagogical-system`, `student-profile-and-assessment`, `i18n`,
+  `ai-gateway-strategy`. Incluye:
+  - Tabla `colloquialism_equivalents` con ~91 entradas seed.
+  - Schema `ContentWithAnnotations` mixin para assets relevantes.
+  - Pipeline con task IA `extract_cultural_annotations`.
+  - UI con marker inline + bottom-sheet.
+  - 6 decisiones abiertas por cerrar antes de implementar (ver §9 del
+    doc).
+
 ---
 
 ## 5. Trabajo pendiente por sistema
