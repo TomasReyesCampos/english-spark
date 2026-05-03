@@ -225,6 +225,26 @@ existentes pero aún no se han creado:
   - 6 decisiones abiertas por cerrar antes de implementar (ver §9 del
     doc).
 
+- [ ] **Estrategia de assets multimedia (audio, imagen, video)** —
+  diseño detallado en
+  [`docs/explorations/multimedia-assets.md`](explorations/multimedia-assets.md).
+  Target: parte en MVP, parte en Fase 2. **Promover el modelo
+  atomic→composite ANTES del MVP** porque es core del unit economics.
+  Toca `content-creation-system`, `pedagogical-system`,
+  `ai-gateway-strategy`, `sparks-system`. Incluye:
+  - Sistema de labels que descompone `AssetType` en dimensiones.
+  - Tabla `media_atomics` separada de `learning_assets` para reuse.
+  - Tabla `characters` para consistency cross-asset.
+  - Strategy 100% TTS con voz "Anita" host cloneada + pool de 8 voces.
+  - Strategy 100% AI generation para imágenes (DALL-E 3, fallback Flux).
+  - Strategy video con HeyGen/Hedra (talking head 60-70%) + Runway
+    Gen-3 (scenes 15-20%) + Lottie (animations 10%) + manual (screen
+    recordings 5%).
+  - 8 nuevas AI Gateway tasks.
+  - Cost model: ~$1.000 USD all-in para MVP con reuse 2x (vs $2.000
+    sin reuse).
+  - 8 decisiones abiertas (ver §14 del doc).
+
 ---
 
 ## 5. Trabajo pendiente por sistema
