@@ -48,3 +48,11 @@ wrangler.toml.local
 *.tmp
 *.temp
 .cache/
+
+# Installers / executables (no se versionan en este repo)
+*.exe
+*.msi
+*.dmg
+*.deb
+*.rpm
+*.pkg
