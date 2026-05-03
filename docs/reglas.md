@@ -273,11 +273,32 @@ funciona para cada uno. Recalculado mensualmente.
 
 ### 4.7 Tono de comunicación
 
-Español neutro latinoamericano, cercano pero profesional. **No usar:**
+**Español mexicano** con vocabulario universal latinoamericano. Tuteo
+(tú, tu, te). Cercano pero profesional. Target inicial México;
+universalmente entendible en Latam.
 
-- Modismos muy locales que excluyen otros países.
-- Excesiva familiaridad ("flaco", "compa", "compita").
+**Sí usar:**
+
+- Tuteo consistente: "puedes", "te acompañamos", "tu plan", "iníciate".
+- Vocabulario neutral con leve preferencia mexicana cuando hay opción
+  (ej: "computadora" sobre "ordenador", "celular" sobre "móvil").
+- Tono cercano pero respetuoso del usuario adulto.
+
+**No usar:**
+
+- Voseo argentino: "vos podés", "registrate", "fluís".
+- Modismos muy locales que excluyen otros países (ni mexicanismos
+  fuertes como "ahorita", "neta", "wey", ni argentinismos como
+  "boludo", "che").
+- Excesiva familiaridad ("flaco", "compa", "compita", "wey",
+  "carnal").
 - Tono gringo traducido literalmente ("¡Tú lo lograste, campeón!").
+
+**Razón del switch a tuteo (cerrado 2026-05):** target inicial México
+(donde el voseo es marciano) + tuteo es **más universal en Latam**.
+Argentina/Uruguay usan voseo pero entienden tuteo perfectamente. El
+voseo en México sería rechazado, mientras que el tuteo en Argentina
+no genera fricción significativa.
 
 ---
 

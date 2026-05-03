@@ -236,11 +236,16 @@ primero.
 
 ## 10. Comunicación
 
-- Idioma: español rioplatense / neutro latinoamericano para
-  documentación, comentarios de commit, mensajes al usuario.
+- Idioma: **español mexicano** (tuteo, no voseo) para documentación,
+  comentarios de commit, mensajes al usuario, copy de la app.
 - Código: nombres de identificadores en inglés (estándar).
-- Output al usuario final de la app: español neutro latinoamericano,
-  ver tono en `docs/reglas.md` §4.7.
+- Output al usuario final de la app: español mexicano con vocabulario
+  universal (evitar mexicanismos demasiado locales que excluyan a
+  otros usuarios latinoamericanos). Ver tono en `docs/reglas.md` §4.7
+  y guía de localización en `docs/cross-cutting/i18n.md` §2.
+- Razón de la decisión: target inicial México + tuteo es más universal
+  en Latam (no excluye a usuarios mexicanos, colombianos, chilenos,
+  peruanos como sí lo haría el voseo argentino).
 
 ---
 

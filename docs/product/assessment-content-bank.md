@@ -50,28 +50,92 @@ Al iniciar `requestAssessment`:
 async function buildAssessmentSession(
   userProfile: StudentProfile,
   observedBehavior: ObservedBehavior,
-): Promise<AssessmentSession> {
+): Promise<AssessmentSession | { user_choice_required: true; options: string[] }> {
   const goal = userProfile.primary_goals[0];
-  const cefrEstimate = userProfile.initial_test_results.cefr_estimate;
   const targetVariant = userProfile.target_english_variant;
   const previousAssessmentItems = await getPreviousAssessmentItemIds(userProfile.user_id);
+
+  // CEFR hybrid: combina self-perceived + measured (mini-test)
+  // Ver student-profile-and-assessment.md §13.2
+  const cefrDecision = determineCefrForAssessment(userProfile);
+
+  if (cefrDecision.show_choice) {
+    // Cliente muestra UI: "Detectamos X, declaraste Y. ¿Cuál prefieres?"
+    return { user_choice_required: true, options: cefrDecision.options };
+  }
+
+  const cefrLevel = cefrDecision.cefr;
 
   return {
     parte_1_questions: sampleProfileQuestions(userProfile),
     parte_2_exercises: [
-      sampleReadingPassage({ goal, cefr: cefrEstimate, exclude: previousAssessmentItems }),
-      sampleRoleplayScenario({ goal, cefr: cefrEstimate, exclude: ... }),
+      sampleReadingPassage({ goal, cefr: cefrLevel, exclude: previousAssessmentItems }),
+      sampleRoleplayScenario({ goal, cefr: cefrLevel, exclude: ... }),
       samplePronunciationSet({ targetVariant, exclude: ... }),
-      sampleListeningExercise({ goal, cefr: cefrEstimate, targetVariant, exclude: ... }),
+      sampleListeningExercise({ goal, cefr: cefrLevel, targetVariant, exclude: ... }),
       sampleFreeResponsePrompt({ goal, exclude: ... }),
     ],
     parte_3_exercises: [
-      sampleVocabularyQuestions({ cefr: cefrEstimate, count: 10, exclude: ... }),
-      sampleGrammarQuestions({ cefr: cefrEstimate, count: 8, exclude: ... }),
+      sampleVocabularyQuestions({ cefr: cefrLevel, count: 10, exclude: ... }),
+      sampleGrammarQuestions({ cefr: cefrLevel, count: 8, exclude: ... }),
     ],
     parte_4_questions: sampleAspirationsQuestions(userProfile),
   };
 }
+
+// Lógica hybrid (ver student-profile-and-assessment.md §13.2)
+function determineCefrForAssessment(profile: StudentProfile): {
+  cefr: string;
+  show_choice: boolean;
+  options?: [string, string];
+  show_explanation?: boolean;
+} {
+  const selfPerceived = profile.self_perceived_level;
+  const measured = profile.initial_test_results?.cefr_estimate;
+
+  if (!measured) return { cefr: selfPerceived, show_choice: false };
+  if (!selfPerceived) return { cefr: measured, show_choice: false };
+
+  const distance = cefrLevelDistance(selfPerceived, measured);
+
+  if (distance === 0) {
+    return { cefr: selfPerceived, show_choice: false };
+  }
+  if (distance === 1) {
+    return {
+      cefr: 'user_choice_required',
+      show_choice: true,
+      options: [measured, selfPerceived],
+    };
+  }
+  // distance >= 2: usar el más alto (benefit of doubt al user)
+  return {
+    cefr: cefrLevelMax(selfPerceived, measured),
+    show_choice: false,
+    show_explanation: true,
+  };
+}
+```
+
+#### UX cuando hay user_choice
+
+```
+┌─────────────────────────────────────┐
+│  Estamos por evaluarte              │
+│                                     │
+│  Detectamos en tu primera prueba    │
+│  que estás cerca de B1+.            │
+│                                     │
+│  Tú declaraste sentirte en B2.      │
+│                                     │
+│  ¿En qué nivel prefieres evaluarte? │
+│                                     │
+│  [ B1+ (más cómodo)            ]    │
+│  [ B2 (más desafiante)         ]    │
+│                                     │
+│  💡 Si te queda muy difícil/fácil   │
+│     podemos recalibrar después.     │
+└─────────────────────────────────────┘
 ```
 
 ### 1.3 Tabla `assessment_items` (schema)

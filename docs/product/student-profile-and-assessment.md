@@ -1111,21 +1111,85 @@ definitive roadmap.
 
 ## 13. Decisiones cerradas
 
-### 13.1 Permitir assessment antes del Day 7: **Sí, pero solo si Sparks runout o Day 5+** ✓
+### 13.1 Timing del assessment: **3 niveles según día del trial** ✓ (actualizado 2026-05)
+
+| Día del trial | Status | Comportamiento |
+|---------------|--------|----------------|
+| **1-2** | Locked | No disponible. Necesitamos data observada del trial mínima. Solo se desbloquea si Sparks runout (caso de power user). |
+| **3-4** | Optional | User puede solicitar desde Settings o banner sutil. Si no lo hace, app funciona normal. |
+| **5-6** | "Obligatorio" suave | Modal prominente al abrir app: **"Empezar ahora"** (CTA primario) / **"Postergar 1 día"** (secundario, max 2 postpones). Premium features siguen disponibles. |
+| **7+** | Obligatorio firme | Modal no-dismissible hasta empezar. Features premium (conversation 1:1, roleplays personalizados) bloqueadas hasta completar. **Preassets gratis siempre disponibles** (regla del producto). |
+
+**Excepción transversal:** Sparks runout antes del Day 3 → assessment
+se ofrece adelantado independiente del día (oportunidad de conversion
+temprana).
+
+**Razón del cambio (2026-05):**
+- Day 3 con observed_behavior básico ya es suficiente para roadmap
+  útil (no perfecto, pero útil).
+- Día 5 obligatorio suave alinea con behavior real: la mayoría de
+  power users ha gastado Sparks para entonces y querría pasar al plan.
+- Premium features bloqueadas Day 7+ es la "graduation": el trial
+  cumplió su rol de exploración; ahora se necesita el plan para
+  premium.
+- Filosofía intacta: nunca se cierra la puerta. Preassets gratis
+  siempre.
+
+**Implementación:**
+- Cliente checa `student_profile.trial_status` + days since
+  `trial_started_at` en cada app open.
+- Si Day 5-6: muestra modal con `postponeCount`.
+- Si Day 7+: bloquea features premium en backend (pedagogical-system
+  rechaza tasks que requieran Sparks para premium operations si
+  assessment no completed).
+- Postpone counter persistido en `student_profiles.assessment_postpone_count`.
+
+### 13.2 CEFR para sampling del assessment: **Hybrid self-perceived + measured** ✓ (cerrado 2026-05)
+
+```typescript
+function determineCefrForAssessment(profile: StudentProfile) {
+  const selfPerceived = profile.self_perceived_level;
+  const measured = profile.initial_test_results?.cefr_estimate;
+
+  // Caso 1: matchean (~50% casos) → usar ese, sin fricción
+  if (cefrDistance(selfPerceived, measured) === 0) {
+    return { cefr: selfPerceived, show_choice: false };
+  }
+
+  // Caso 2: difieren por 1 nivel (~40% casos) → preguntar al user
+  // Pantalla: "Detectamos que estás cerca de B1+, tú sientes B2.
+  //           ¿Cuál prefieres evaluar?
+  //           [B1+ (más cómodo)] [B2 (más desafiante)]"
+  if (cefrDistance(selfPerceived, measured) === 1) {
+    return { cefr: 'user_choice_required', show_choice: true,
+             options: [measured, selfPerceived] };
+  }
+
+  // Caso 3: difieren por 2+ niveles (~10% casos) → tomar el HIGHER,
+  //         con disclaimer
+  // "Vamos a evaluarte en [higher]. Si es muy difícil podés repetir
+  //  más adelante en otro nivel."
+  if (cefrDistance(selfPerceived, measured) >= 2) {
+    return { cefr: max(selfPerceived, measured), show_choice: false,
+             show_explanation: true };
+  }
+}
+```
 
 **Razón:**
-- Sparks runout: oportunidad de conversion temprana, no la quemamos.
-- Day 5+: 5 días es suficiente para observed_behavior útil.
-- Antes del Day 5: data observada insuficiente para definitive roadmap
-  preciso.
+- Self-perceived solo es riesgoso (Dunning-Kruger).
+- Measured solo ignora agency del user.
+- Hybrid balancea: respeta intuición del user cuando hay alineación,
+  le da choice cuando difieren marginalmente, toma decisión informed
+  cuando difieren mucho.
 
-### 13.2 Re-aplicar assessment al cambiar objetivo: **Sí, si significant_change** ✓
+### 13.3 Re-aplicar assessment al cambiar objetivo: **Sí, si significant_change** ✓
 
 **Razón:** un objetivo nuevo cambia qué medir. Mantener assessment
 viejo daría scoring desalineado.
 
 **Implementación:** `profile.updated` con `significant_change = true`
-→ prompt al user "¿querés rehacer el assessment para tu nuevo
+→ prompt al user "¿quieres rehacer el assessment para tu nuevo
 objetivo?". Si rechaza, mantener actual con flag `objective_misalignment`.
 
 ### 13.3 Manejo de "broken assessments": **detectar + recovery prompt** ✓
