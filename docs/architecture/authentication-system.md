@@ -173,8 +173,8 @@ Cuando un usuario:
 
 **Comportamiento:**
 - Sistema detecta email duplicado en `users.email`.
-- Pregunta: "Ya tenés cuenta con este email vinculada a Google.
-  ¿Querés agregar email/password como método adicional?"
+- Pregunta: "Ya tienes cuenta con este email vinculada a Google.
+  ¿Quieres agregar email/password como método adicional?"
 - Si confirma: `auth().currentUser.linkWithCredential(emailCred)` →
   Firebase linkea las cuentas (mantiene UID).
 - `linked_providers` se actualiza en Postgres.

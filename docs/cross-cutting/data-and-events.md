@@ -37,14 +37,14 @@ Cuando el sistema A necesita avisar al sistema B que algo pasó (sin
 esperar respuesta síncrona), emite un domain event. B se suscribe.
 
 APIs son la vía para queries y comandos síncronos (necesito una
-respuesta ahora). Eventos son para "ya pasó esto, hacé lo que tengas
+respuesta ahora). Eventos son para "ya pasó esto, haz lo que tengas
 que hacer".
 
 ### 1.2 Events vs commands
 
 - **Domain event:** "ya pasó X". Past tense. Muchos consumidores
   posibles. Idempotent. (`block.completed`)
-- **Command:** "hacé Y". Imperative. Un solo destinatario. Puede fallar.
+- **Command:** "haz Y". Imperative. Un solo destinatario. Puede fallar.
   (no usamos en este sistema; las commands son llamadas RPC).
 
 ### 1.3 Loose coupling

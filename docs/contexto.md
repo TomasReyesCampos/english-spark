@@ -23,8 +23,8 @@ no es el contenido (otras apps tienen más), sino:
 
 ### 1.1 Propuesta de valor en una frase
 
-"Hablá inglés con confianza para conseguir el trabajo / viaje / vida que
-querés, en menos tiempo del que pensás."
+"Habla inglés con confianza para conseguir el trabajo / viaje / vida que
+quieres, en menos tiempo del que piensas."
 
 ### 1.2 Tracks principales
 

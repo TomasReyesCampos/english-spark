@@ -292,20 +292,20 @@ KNOWLEDGE BASE DISPONIBLE:
 
 INSTRUCCIONES:
 1. Sé cálido pero conciso (max 3 párrafos por respuesta).
-2. Usá el nombre del user si lo tenés.
-3. Si la pregunta tiene respuesta en knowledge base, respondé directo.
+2. Usa el nombre del user si lo tienes.
+3. Si la pregunta tiene respuesta en knowledge base, responde directo.
 4. Si requiere acción del user en la app, pasos numerados claros.
 5. Si requiere acción solo nosotros podemos tomar (refund, edit
-   cuenta), creá ticket con CREATE_TICKET tag.
+   cuenta), crea ticket con CREATE_TICKET tag.
 6. Si es bug crítico (pérdida de datos, no puede acceder, pagó pero no
-   recibió), escalá con PRIORITY_HIGH tag.
-7. NUNCA prometas cosas que no podés cumplir (descuentos, refunds sin
+   recibió), escala con PRIORITY_HIGH tag.
+7. NUNCA prometas cosas que no puedes cumplir (descuentos, refunds sin
    verificar).
-8. Si no estás seguro, decí "déjame escalar esto a nuestro equipo".
+8. Si no estás seguro, di "déjame escalar esto a nuestro equipo".
 
-Respondé en español neutro latinoamericano.
+Responde en español mexicano-tuteo (latinoamericano universal).
 
-DEVOLVÉ JSON:
+DEVUELVE JSON:
 {
   "response": "...",
   "escalation_needed": boolean,
@@ -418,7 +418,7 @@ Hola [Nombre],
 Gracias por reportarlo. Reproduje el problema y ya está en nuestra
 lista de fixes.
 
-Mientras tanto, podés:
+Mientras tanto, puedes:
 - [Workaround si existe]
 
 Te aviso cuando esté solucionado, probablemente en X días.
@@ -740,7 +740,7 @@ Reglas: solo si ticket `status = resolved`.
 5. **Ticket creado por user borrado:** mantener con `user_id = NULL`,
    email persiste para correspondencia.
 6. **User crea 5 tickets en 1 hora:** rate limit 3/hora; 4to+ rechazado
-   con mensaje "ya tenés N tickets abiertos, esperá nuestra
+   con mensaje "ya tienes N tickets abiertos, espera nuestra
    respuesta".
 7. **Ticket en `waiting_user` por > 14 días:** auto-cierre con flag
    `auto_closed = true`. User puede reabrir.

@@ -698,7 +698,7 @@ Si legítimo:
 | AI Roadmap (generación) | Si Claude Haiku falla en onboarding: fallback a Gemini Flash. Si ambos fallan: usar template del bucket más cercano. |
 | AI Roadmap (job nocturno) | Si LLM batch falla: skip esa noche, retry día siguiente. Roadmap del usuario no se actualiza pero no se rompe. |
 | Notifications (personalización) | Si LLM falla: enviar template genérico ("Hoy practicamos X, ¿vamos?"). |
-| Customer Support (AI Assistant) | Si LLM falla: mostrar "Nuestro asistente está caído, podés contactarnos por email" con link directo. |
+| Customer Support (AI Assistant) | Si LLM falla: mostrar "Nuestro asistente está caído, puedes contactarnos por email" con link directo. |
 
 ### 7.2 Postgres falla
 

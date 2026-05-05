@@ -239,7 +239,7 @@ pagando Sparks dentro de 24h:
 
 ```
 😔 Tu racha de 23 días se rompió ayer
-Pero podés recuperarla pagando 30 Sparks
+Pero puedes recuperarla pagando 30 Sparks
 [Recuperar mi racha]
 ```
 
@@ -921,7 +921,7 @@ Recalculado mensualmente. Mensajes y experiencia se ajustan.
 (Detalle en `cross-cutting/i18n.md` §2.2.)
 
 **Bien:**
-- "Vamos, vos podés".
+- "Vamos, tú puedes".
 - "Tu meta te espera".
 - "Un día más, un paso más".
 

@@ -299,7 +299,7 @@ trabajás.
 **Recovery:**
 - R2 NO tiene undelete. Si los audios se borraron, se perdieron.
 - Comunicación honesta: "perdimos audios de X período. Tu progreso no
-  se afectó (los scores ya estaban calculados); solo no podés re-oír
+  se afectó (los scores ya estaban calculados); solo no puedes re-oír
   esas grabaciones."
 
 ### 4.6 Cost spike de IA
@@ -485,7 +485,7 @@ Qué recibís como compensación:
 Estamos trabajando para que esto no vuelva a pasar y publicaremos un
 postmortem público en [fecha estimada].
 
-Si tenés alguna pregunta, escribinos a soporte@[dominio].
+Si tienes alguna pregunta, escríbenos a soporte@[dominio].
 
 Equipo de [Producto]
 ```

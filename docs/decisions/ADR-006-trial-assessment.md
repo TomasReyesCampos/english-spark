@@ -65,7 +65,7 @@ El assessment **desbloquea** el roadmap definitivo (no solo "actualiza"
 el provisional). El usuario percibe:
 
 - Antes del assessment: "tu plan inicial - se actualizará al día 7".
-- Después del assessment: "tu plan personalizado, hecho para vos".
+- Después del assessment: "tu plan personalizado, hecho para ti".
 
 Esto crea expectativa positiva sin forzar.
 

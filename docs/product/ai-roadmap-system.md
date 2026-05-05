@@ -301,21 +301,21 @@ BIBLIOTECA DISPONIBLE (selecciona de aquí, NO inventes bloques):
 {{learning_blocks_filtered_by_relevant_cefr}}
 
 INSTRUCCIONES:
-1. Seleccioná entre 30 y 50 bloques que cubran los objetivos del
+1. Selecciona entre 30 y 50 bloques que cubran los objetivos del
    usuario.
-2. Organizalos en 4-6 niveles temáticos con nombres motivadores.
-3. Respetá los prerequisites de cada bloque.
-4. Priorizá bloques que ataquen los errores detectados.
-5. Si hay deadline corto (<1 mes), elegí solo los esenciales.
+2. Organízalos en 4-6 niveles temáticos con nombres motivadores.
+3. Respeta los prerequisites de cada bloque.
+4. Prioriza bloques que ataquen los errores detectados.
+5. Si hay deadline corto (<1 mes), elige solo los esenciales.
 6. Si hay alta ansiedad, los primeros bloques deben ser de baja
    presión.
-7. Para cada bloque seleccionado, escribí UNA frase explicando por qué
+7. Para cada bloque seleccionado, escribe UNA frase explicando por qué
    está incluido (personalization_reason).
-8. Para cada nivel, escribí UNA frase de motivación (ai_reasoning).
-9. Generá un ai_summary de 2-3 frases que el usuario verá al ver su
+8. Para cada nivel, escribe UNA frase de motivación (ai_reasoning).
+9. Genera un ai_summary de 2-3 frases que el usuario verá al ver su
    roadmap.
 
-DEVOLVÉ JSON exacto siguiendo este schema (estructura aproximada):
+DEVUELVE JSON exacto siguiendo este schema (estructura aproximada):
 {
   "ai_summary": "...",
   "estimated_completion_weeks": N,
@@ -389,7 +389,7 @@ Llamada a AI Gateway task `generate_definitive_roadmap` con:
 | Foco | General por objetivo | Específico a errores detectados |
 | Variant inglés | Default del país | Confirmada por preferencia |
 | Niveles | 4 estándar | 4–6 personalizados |
-| Mensaje | "Plan inicial provisional" | "Tu plan definitivo, hecho para vos" |
+| Mensaje | "Plan inicial provisional" | "Tu plan definitivo, hecho para ti" |
 
 ### 6.3 Persistencia y archivado
 

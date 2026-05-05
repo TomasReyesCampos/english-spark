@@ -394,7 +394,7 @@ Hola,
 Detectamos actividad que viola nuestros Términos de Uso (sección 5.2).
 Como resultado, hemos aplicado [restricción específica].
 
-Si crees que esto es un error, podés apelar respondiendo a este email
+Si crees que esto es un error, puedes apelar respondiendo a este email
 o desde [link a apelación].
 
 Equipo de [Producto]
@@ -460,7 +460,7 @@ Visible en onboarding y privacy policy:
 
 > Usamos inteligencia artificial (modelos de lenguaje y de procesamiento
 > de audio) para personalizar tu plan de aprendizaje, evaluar tu
-> pronunciación y generar feedback. La IA puede cometer errores; usá tu
+> pronunciación y generar feedback. La IA puede cometer errores; usa tu
 > juicio. No reemplaza un profesor humano si estás preparándote para un
 > examen oficial.
 
@@ -469,12 +469,12 @@ Visible en onboarding y privacy policy:
 Antes del primer ejercicio que requiere micrófono, prompt explícito:
 
 > Para evaluar tu pronunciación, necesitamos grabar audios cortos cuando
-> hablás en la app. Estos audios:
+> hablas en la app. Estos audios:
 >
 > - Se almacenan encriptados.
 > - Se borran automáticamente después de 30 días.
 > - Pueden usarse para mejorar nuestros modelos de IA, en forma
->   anonimizada (podés desactivar esto en Settings).
+>   anonimizada (puedes desactivar esto en Settings).
 >
 > [Aceptar y continuar] [No, gracias]
 

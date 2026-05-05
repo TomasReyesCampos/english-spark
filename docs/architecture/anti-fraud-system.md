@@ -434,7 +434,7 @@ Combinación de signals:
 
 **Caso 1: Confirmado (matches fuertes en múltiples signals):**
 - Cuenta nueva: `restriction_applied = no_trial_sparks`.
-- Usuario notificado: "Ya tenés cuenta con nosotros. Iniciá sesión
+- Usuario notificado: "Ya tienes cuenta con nosotros. Inicia sesión
   con X email."
 
 **Caso 2: Posible duplicado (matches débiles):**

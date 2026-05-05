@@ -275,7 +275,7 @@ Total: 20-25 min, 12 ejercicios principales.
 #### Q3: Natural vs correcto
 
 ```
-¿Qué tan importante es para vos sonar "natural" vs "correcto"?
+¿Qué tan importante es para ti sonar "natural" vs "correcto"?
 
 [1: Solo correcto importa] ─── [3: Ambos por igual] ─── [5: Solo natural importa]
 ```
@@ -1021,7 +1021,7 @@ grammar_q_b1_003:
 ### 6.1 Q1: Frustración principal
 
 ```
-¿Qué te frustra más cuando hablás inglés?
+¿Qué te frustra más cuando hablas inglés?
 (Single select)
 
 [ ] No encuentro las palabras que quiero usar
@@ -1047,7 +1047,7 @@ preparar palabra por palabra."
 ### 6.3 Q3: Tipo de feedback preferido
 
 ```
-¿Qué tipo de feedback preferís recibir?
+¿Qué tipo de feedback prefieres recibir?
 
 [ ] Corrección inmediata (interrupción cuando hay error)
 [ ] Corrección al final de la sesión (resumen)
@@ -1135,7 +1135,7 @@ Flags si:
 - Vocabulary q3-Q10 todas = primera opción (patrón "all A").
 - Grammar q1-Q8 todas = "correct" o todas = "wrong".
 
-Si flag: prompt al user "El assessment fue muy rápido, ¿querés
+Si flag: prompt al user "El assessment fue muy rápido, ¿quieres
 rehacerlo?" (ver `student-profile-and-assessment.md` §6.6).
 
 ---

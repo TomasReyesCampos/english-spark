@@ -317,6 +317,12 @@ interface AssessmentResults {
 
 ## 4. Onboarding inicial (Day 0)
 
+> **Copy literal y mockups completos** (16 pantallas con texto exacto en
+> mexicano-tuteo, edge cases, variantes y telemetría) viven en
+> [`onboarding-flow.md`](onboarding-flow.md). Esta sección documenta
+> el **modelo de datos** y el **flujo lógico**; el documento referenciado
+> es la fuente de verdad para implementación de UI/copy.
+
 ### 4.1 Objetivos
 
 - Capturar perfil mínimo viable.
@@ -362,14 +368,14 @@ Single-select de `professional_field`.
 #### Paso 6: Autoevaluación (30s)
 
 ```
-¿Cómo te sentís hablando inglés?
+¿Cómo te sientes hablando inglés?
 😰 Me bloqueo completamente
 😟 Muy nervioso, evito hablar
 😐 Nervioso pero hablo
 😊 Hablo con errores pero fluyo
 😎 Hablo bien pero quiero pulir
 
-¿Cuánto tiempo podés dedicar al día?
+¿Cuánto tiempo puedes dedicar al día?
 [5 min] [10 min] [15 min] [20 min] [30 min] [+30 min]
 ```
 
@@ -481,10 +487,10 @@ Calculado incrementalmente cada noche del trial. Se persiste en
 | Día | Mensaje | Canal | Objetivo |
 |-----|---------|-------|----------|
 | 1 (24h post-registro) | "¡Buen primer día! ¿Listo para el segundo?" | Push | Reforzar hábito |
-| 3 | "Llevás 3 días. Tu pronunciación de [X] mejoró." | Push | Mostrar progreso |
+| 3 | "Llevas 3 días. Tu pronunciación de [X] mejoró." | Push | Mostrar progreso |
 | 5 | "Faltan 2 días para tu assessment. Va a desbloquear tu plan completo." | Push | Crear expectativa |
 | 6 | "Mañana es el gran día. Toma 20 minutos y va a transformar tu plan." | Push + In-app | Preparar |
-| 7 | "Llegó el día. Hacé tu assessment ahora." | Push prominente | Trigger |
+| 7 | "Llegó el día. Haz tu assessment ahora." | Push prominente | Trigger |
 
 ### 5.5 Edge: Sparks runout pre-Day 7
 
@@ -494,9 +500,11 @@ User entusiasta consume 50 Sparks al Day 4-5.
 - Mensaje claro: "Usaste todos tus Sparks gratuitos. Tu plan completo te
   espera al hacer el assessment."
 - Acceso continuo a preassets ilimitados.
-- Opción de "hacer assessment ahora" si user está listo (después del
-  Day 5 mínimo).
-- Si user elige hacerlo antes del Day 7: assessment se desbloquea.
+- Opción de "hacer assessment ahora": Sparks runout es la **excepción
+  transversal** del §13.1 — desbloquea assessment incluso en Day 1-2
+  (que normalmente está locked).
+- Si user elige hacerlo antes del Day 7: assessment se desbloquea con
+  `reason = 'sparks_runout_early'`.
 
 Convierte momento de fricción en oportunidad de conversión adelantada.
 
@@ -546,9 +554,9 @@ Re-confirmar y profundizar lo declarado:
 
 **Ej 2: Roleplay situacional (3 min)**
 - Situación específica al objetivo.
-- Job interview: "Te están entrevistando. Contame sobre un desafío que
+- Job interview: "Te están entrevistando. Cuéntame sobre un desafío que
   superaste."
-- Travel: "Estás en hotel y la habitación tiene problemas. ¿Qué decís?"
+- Travel: "Estás en hotel y la habitación tiene problemas. ¿Qué dices?"
 - Mide: vocabulario activo en contexto, fluidez espontánea, gramática.
 
 **Ej 3: Pronunciación específica (2 min)**
@@ -575,9 +583,9 @@ sinónimo correcto. Adaptativo.
 
 #### Parte 4: Aspiraciones y motivación (2 min)
 
-- ¿Qué te frustra más cuando hablás inglés?
+- ¿Qué te frustra más cuando hablas inglés?
 - ¿En qué situación te gustaría sentirte cómodo en 3 meses?
-- ¿Tipo de feedback preferís? (corrección inmediata, al final, suave,
+- ¿Tipo de feedback prefieres? (corrección inmediata, al final, suave,
   directo).
 - ¿Sesiones cortas frecuentes o largas espaciadas?
 
@@ -626,7 +634,7 @@ Inmediatamente después, pantalla emocional:
 
 ✨ Tu Plan Personalizado:
 14 semanas para llegar a tu objetivo de entrevistas en inglés.
-68 lecciones específicas para vos.
+68 lecciones específicas para ti.
 Foco principal: confianza al hablar y fluidez.
 
 [Empezar mi plan →]
@@ -659,7 +667,7 @@ Si user obviamente no toma en serio:
 **Comportamiento:**
 - Detectar en validación post-completion.
 - Mostrar prompt: "Notamos que el assessment fue muy rápido.
-  ¿Querés rehacerlo para que sea preciso?"
+  ¿Quieres rehacerlo para que sea preciso?"
 - Si user confirma: re-iniciar assessment, no cobrar Sparks
   adicionales.
 - Si user dice "está bien así": persistir results pero flag
@@ -682,7 +690,7 @@ Day 7, después del assessment. User:
 Después del plan personalizado:
 
 ```
-Tu plan está listo. ¿Cómo querés practicarlo?
+Tu plan está listo. ¿Cómo quieres practicarlo?
 
 ┌─────────────────────────────────────┐
 │  Plan Básico - $30/mes              │
@@ -715,7 +723,7 @@ Tu plan está listo. ¿Cómo querés practicarlo?
 - **Anchoring:** Pro recomendado hace que Básico parezca poco y Premium
   mucho. Pro captura mayoría.
 - **Scarcity transparente:** "tu plan personalizado está listo".
-- **Risk reversal:** "cancelá cuando quieras, los Sparks comprados no
+- **Risk reversal:** "cancela cuando quieras, los Sparks comprados no
   expiran por 6 meses".
 - **Social proof:** "más de X usuarios en [país] eligieron Pro este mes".
 
@@ -1297,7 +1305,7 @@ function determineCefrForAssessment(profile: StudentProfile) {
 
   // Caso 3: difieren por 2+ niveles (~10% casos) → tomar el HIGHER,
   //         con disclaimer
-  // "Vamos a evaluarte en [higher]. Si es muy difícil podés repetir
+  // "Vamos a evaluarte en [higher]. Si es muy difícil puedes repetir
   //  más adelante en otro nivel."
   if (cefrDistance(selfPerceived, measured) >= 2) {
     return { cefr: max(selfPerceived, measured), show_choice: false,
