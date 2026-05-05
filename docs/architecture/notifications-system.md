@@ -136,6 +136,12 @@ días.
 
 ## 4. Catálogo de notificaciones
 
+> **Copy literal y plantillas completas** (variantes por contexto,
+> banco de los 80 logros, validation rules, A/B tests priorizados)
+> viven en [`../product/push-notifications-copy-bank.md`](../product/push-notifications-copy-bank.md).
+> Esta sección documenta **trigger, frecuencia y categoría**; el doc
+> referenciado es la fuente de verdad para los textos.
+
 ### 4.1 Tabla canónica
 
 | `notification_id` | Categoría | Frecuencia | Trigger | Personalizada |
@@ -1099,6 +1105,7 @@ todo en su perfil.
 | [`ai-gateway-strategy.md`](ai-gateway-strategy.md) §4.2.7 | Task `generate_notification_content`. |
 | [`anti-fraud-system.md`](anti-fraud-system.md) | Lee `user_restrictions` antes de enviar. |
 | [`../product/motivation-and-achievements.md`](../product/motivation-and-achievements.md) | Emite `achievement.unlocked` que dispara push. |
+| [`../product/push-notifications-copy-bank.md`](../product/push-notifications-copy-bank.md) | Banco autoritativo de copys literales para los 15 notification_ids + 80 logros. |
 | [`../product/pedagogical-system.md`](../product/pedagogical-system.md) | `block.struggling_detected` → notificación empática. |
 | [`sparks-system.md`](sparks-system.md) | `sparks.balance_low` y `sparks.depleted` → push. |
 | [`../cross-cutting/data-and-events.md`](../cross-cutting/data-and-events.md) §5.6 | Eventos `notification.*`. |
