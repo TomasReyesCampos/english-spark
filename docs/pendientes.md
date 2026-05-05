@@ -4,9 +4,61 @@
 > pendientes** y **documentos a crear** identificados en cada sistema.
 > Cada ítem indica el documento de origen para profundizar.
 
-**Última actualización:** 2026-04
+**Última actualización:** 2026-05
 **Cómo usar:** revisar al menos al inicio de cada sprint. Marcar como
 resuelto al tomar decisión y mover el detalle al documento correspondiente.
+
+---
+
+## 0. Cambios recientes (ronda 2026-05)
+
+Resumen de lo cerrado en la ronda más reciente (referenciar §1-§5
+para detalle):
+
+**Decisiones cerradas:**
+- Locale único MVP: mexicano-tuteo (CLAUDE.md §10, reglas.md, i18n.md).
+- Assessment timing: 3 niveles (locked / optional / soft / firm) según
+  día del trial (§1.1).
+- CEFR sampling para assessment: hybrid self-perceived + measured
+  (§1.1).
+- Assessment broken detection + recovery prompt (§1.1).
+- Roadmap inicial: solo 2 niveles + preview borrosa (§1.1).
+- PDF assessment: post-MVP (§1.1).
+- Versionado de atomics con `_v<n>` (§1.5).
+- 6 characters en seed inicial + 12 voces base (§1.5).
+- Proveedores generación: ElevenLabs / DALL-E 3 / HeyGen / Freesound
+  CC0 (§1.5).
+- 5 decisiones de notifications (snooze, smart timing, grupales, rich,
+  A/B) cerradas como "no MVP" (§2.4).
+
+**Specs nuevos creados (~10.000 líneas totales):**
+- `product/curriculum-by-cefr.md` — plan A1→C2.
+- `product/assessment-content-bank.md` — pool items Day 7.
+- `product/post-assessment-flow.md` — 8 pantallas reveal.
+- `product/onboarding-flow.md` — 16 pantallas Day 0.
+- `product/push-notifications-copy-bank.md` — copys para 15 notif_ids +
+  80 logros.
+- `product/track-job-ready-blocks.md` — 74 bloques B1→B2+.
+- `product/track-travel-confident-blocks.md` — 39 bloques B1→B2+.
+- `product/track-daily-conversation-blocks.md` — 62 bloques B1→B2+.
+- `product/atomics-catalog-seed.md` — 350 atomics MVP.
+- `explorations/cultural-annotations.md` — exploration tooltip.
+- `explorations/multimedia-assets.md` — promovido parcialmente a v1.2.
+- `explorations/sporadic-questions.md` — promovido a spec v1.2.
+
+**Total MVP definido a nivel de spec:**
+- 175 bloques pedagógicos con asset_sequence y mastery criteria.
+- ~350 media_atomics con generation pipelines.
+- ~700 composites estimados (reuse 2x).
+- 80 logros con copy literal.
+- 15 notification_ids con banco completo de variantes.
+- 16 pantallas onboarding + 8 post-assessment con copy literal.
+
+**Próximas prioridades (sin decisiones bloqueantes):**
+1. Sprint 0 setup foundational (§5.2).
+2. Sprint atomics seed generación (§5.4).
+3. Sprint creación de bloques Daily Conversation primero
+   (cross-track reuse).
 
 ---
 
@@ -15,15 +67,34 @@ resuelto al tomar decisión y mover el detalle al documento correspondiente.
 ### 1.1 Onboarding y assessment
 *(de `product/student-profile-and-assessment.md`)*
 
-- [ ] ¿Permitir hacer el assessment antes del día 7 si el usuario lo pide?
-- [ ] ¿Re-aplicar el assessment cuando el usuario cambia significativamente
-  su objetivo (ej: "travel" → "job interview")?
-- [ ] ¿Cómo manejar usuarios que "rompen" el assessment (responden al azar,
-  no graban audio)? Detectar y reintentar.
-- [ ] ¿Mostrar el roadmap inicial completo o solo los primeros niveles para
-  mantener intriga sobre el assessment?
-- [ ] ¿Permitir descargar PDF del resultado del assessment? (uso como prueba
-  para empleadores).
+- [x] **¿Permitir hacer el assessment antes del día 7?** ✓ CERRADO 2026-05.
+  3 niveles según día: Day 1-2 locked, Day 3-4 optional, Day 5-6 obligatorio
+  suave (modal con postpone), Day 7+ obligatorio firme (premium gated).
+  Excepción transversal: Sparks runout desbloquea aún en Day 1-2. Detalle
+  en `student-profile-and-assessment.md` §13.1.
+- [x] **¿Re-aplicar assessment cuando cambia objetivo?** ✓ CERRADO 2026-05.
+  Sí, si `significant_change = true` (cambio mayor de primary_goals,
+  deadline_date >50%, target_english_variant). Prompt al user. Detalle en
+  §13.2.
+- [x] **¿CEFR para sampling del assessment?** ✓ CERRADO 2026-05. Hybrid
+  self-perceived + measured: si match (~50% casos) usar; si difieren 1
+  nivel preguntar al user; si difieren 2+ tomar el higher con disclaimer.
+  Detalle en §13.2 y `assessment-content-bank.md`.
+- [x] **¿Cómo manejar assessments rotos?** ✓ CERRADO 2026-05. Detect +
+  recovery prompt: "Notamos que el assessment fue muy rápido, ¿quieres
+  rehacerlo?". Si confirma: re-iniciar sin cobrar. Si dice "está bien
+  así": persistir con `low_confidence = true`. Detalle en §6.6.
+- [x] **¿Mostrar roadmap inicial completo o partial?** ✓ CERRADO. Solo
+  primeros 2 niveles + preview borrosa. Mantiene intriga sobre el
+  assessment, reduce overwhelm Day 0. Detalle en §13.4.
+- [x] **¿PDF descargable del resultado del assessment?** ✓ CERRADO.
+  Post-MVP. Reconsiderar si >10% de usuarios lo solicitan via support.
+  Detalle en §13.5.
+
+**Trabajo derivado pendiente:**
+- [ ] Implementar el flow de hybrid CEFR sampling (UI con choice screen
+  cuando difieren 1 nivel).
+- [ ] Implementar postpone counter en `student_profiles.assessment_postpone_count`.
 
 ### 1.2 Roadmap personalizado
 *(de `product/ai-roadmap-system.md`)*
@@ -62,7 +133,7 @@ resuelto al tomar decisión y mover el detalle al documento correspondiente.
   específico de nivel similar)? Inspirado en Strava.
 
 ### 1.5 Creación de contenido
-*(de `product/content-creation-system.md`)*
+*(de `product/content-creation-system.md` y `atomics-catalog-seed.md`)*
 
 - [ ] ¿Crowdsource de assets de la comunidad? Pros: escala. Contras: calidad
   variable, moderación.
@@ -70,8 +141,19 @@ resuelto al tomar decisión y mover el detalle al documento correspondiente.
   derechos.
 - [ ] ¿Generar assets en tiempo real para usuarios con perfiles únicos?
   Posible pero costoso.
-- [ ] ¿Versionado semántico (semver) o flat para assets? Semver puede ser
-  overkill.
+- [x] **¿Versionado de atomics?** ✓ CERRADO 2026-05. Semver mayor con
+  sufijo `_v<n>` en el `id` del atomic. Permite evolución sin romper
+  composites existentes. Detalle en `atomics-catalog-seed.md` §2.
+- [x] **¿Cuántos characters en seed inicial?** ✓ CERRADO 2026-05. 6
+  characters (alex, grandma, sarah, mike, jamie, emma) con ~30 atomics
+  c/u. Más diluye memoria episódica del user. Detalle en §4 del seed.
+- [x] **¿Proveedores primarios de generación?** ✓ CERRADO 2026-05.
+  ElevenLabs (TTS), DALL-E 3 (imágenes), HeyGen (video talking-head),
+  Freesound CC0 (ambient), FFmpeg (distortion overlays). Detalle en §9
+  del seed.
+- [x] **¿12 voces base en voice pool?** ✓ CERRADO 2026-05. 12 voces
+  ElevenLabs cubriendo edades 22-70, M/F, accents US-General/Midwest/
+  Northeast. Post-MVP: 4-6 UK/AU. Detalle en §3 del seed.
 
 ---
 
@@ -109,14 +191,23 @@ resuelto al tomar decisión y mover el detalle al documento correspondiente.
 - [ ] ¿Sparks comprables como gift card para terceros? Útil en navidad.
 
 ### 2.4 Notificaciones
-*(de `architecture/notifications-system.md`)*
+*(de `architecture/notifications-system.md` y `push-notifications-copy-bank.md`)*
 
-- [ ] ¿Permitir snooze de notificaciones por 1 hora desde la propia notif?
-- [ ] ¿Smart timing: aprender cuándo cada usuario suele abrir vs hora
-  preferida declarada?
-- [ ] ¿Notificaciones grupales (múltiples eventos en un solo mensaje)?
-- [ ] ¿Rich notifications con imágenes/audio embebido?
-- [ ] ¿A/B test de variantes de mensajes con Firebase Remote Config?
+- [x] **¿Permitir snooze de notificaciones por 1 hora?** ✓ CERRADO.
+  No en MVP. User puede silenciar a nivel SO. Detalle en
+  `notifications-system.md` §15.5.
+- [x] **¿Smart timing aprender hora real de uso?** ✓ CERRADO.
+  Post-MVP. MVP usa hora preferida declarada. §15.6 notifications-system.
+- [x] **¿Notificaciones grupales (múltiples eventos en uno)?** ✓ CERRADO.
+  No en MVP. Suprimimos extras y user ve todo en su perfil. §15.7.
+- [x] **¿Rich notifications con imágenes/audio embebido?** ✓ CERRADO.
+  No en MVP. Texto simple alcanza. §15.8.
+- [x] **¿A/B test con Firebase Remote Config?** ✓ CERRADO. Post-MVP.
+  PostHog feature flags suplen para empezar. §15.9.
+- [x] **Banco autoritativo de copys de notificaciones** ✓ CERRADO 2026-05.
+  Creado `push-notifications-copy-bank.md` con copy literal mexicano-tuteo
+  para los 15 notification_ids + los 80 logros, validation rules, A/B
+  tests priorizados, schema Postgres `notifications_copy_bank`.
 - [ ] **Cuándo agregar WhatsApp:** validar producto, retention D30 > 30%,
   > 5.000 usuarios, push open rate < 10%.
 
@@ -195,8 +286,29 @@ existentes pero aún no se han creado:
 - [ ] `docs/decisions/sparks-pricing-changes.md` — Log histórico de ajustes
   de costo en Sparks (vacío hasta primer ajuste).
 - [x] `docs/architecture/01-overview.md` — Arquitectura general. ✓ creado.
-- [ ] `docs/product/learning-blocks-taxonomy.md` — Taxonomía de la
-  biblioteca de bloques.
+- [x] `docs/product/learning-blocks-taxonomy.md` — Taxonomía de la
+  biblioteca de bloques. **CUBIERTO 2026-05** por los 3 docs de
+  desglose por track:
+  - `track-job-ready-blocks.md` (74 bloques B1→B2+).
+  - `track-travel-confident-blocks.md` (39 bloques B1→B2+).
+  - `track-daily-conversation-blocks.md` (62 bloques B1→B2+).
+  - **Total MVP: 175 bloques** con sub-skills, prerequisites,
+    estimated_minutes, asset_sequence, mastery criteria por bloque.
+- [x] `docs/product/curriculum-by-cefr.md` — Plan A1→C2 con vocab,
+  grammar, pronunciation, sub-skills, mastery criteria. ✓ creado
+  2026-05.
+- [x] `docs/product/assessment-content-bank.md` — Pool de items para
+  Day 7 assessment con sampling logic. ✓ creado 2026-05.
+- [x] `docs/product/post-assessment-flow.md` — 8 pantallas con copy
+  literal del reveal post-Day 7. ✓ creado 2026-05.
+- [x] `docs/product/onboarding-flow.md` — 16 pantallas con copy literal
+  mexicano-tuteo del Day 0. ✓ creado 2026-05.
+- [x] `docs/product/push-notifications-copy-bank.md` — Banco
+  autoritativo de copys para los 15 notification_ids + 80 logros.
+  ✓ creado 2026-05.
+- [x] `docs/product/atomics-catalog-seed.md` — Seed inicial de los
+  ~350 media_atomics con voice pool, 6 characters, generation
+  pipelines, costos. ✓ creado 2026-05.
 - [x] `docs/cross-cutting/data-and-events.md` — Modelo unificado de
   eventos. ✓ creado.
 - [x] `docs/cross-cutting/security-threat-model.md` — STRIDE por
@@ -296,18 +408,30 @@ existentes pero aún no se han creado:
 
 ### 5.4 Content creation — biblioteca MVP
 
-- [ ] Generar **700 assets de calidad** para MVP (~$3.500 USD estimados):
-  - [ ] ~150 pronunciation drills.
-  - [ ] ~200 roleplays.
-  - [ ] ~150 listening exercises.
-  - [ ] ~100 free response prompts.
-  - [ ] ~100 vocabulary in context.
-- [ ] Cobertura: Job Ready (288), Travel Confident (160), Daily
-  Conversation (240).
-- [ ] Garantizar 5+ assets B1, 5+ B2, 3+ C1 para cada sub-skill core.
+> **Plan refinado 2026-05.** Total MVP: **175 bloques** con
+> `asset_sequence` definida → ~700 composites → ~350 atomics únicos
+> (con reuse 2x). Detalle por track en `track-*-blocks.md`. Seed de
+> atomics en `atomics-catalog-seed.md`.
+
+- [ ] **Sprint 0 atomics seed (5 semanas content team):**
+  - [ ] Sprint 1: voice pool 12 voces + characters infraestructura.
+  - [ ] Sprint 2-3: 178 atomics character-bound (6 characters).
+  - [ ] Sprint 4: 40 ambient + 70 scene image atomics.
+  - [ ] Sprint 5: 60 generic phrase atomics + cleanup.
+  - Costo total seed: ~$24 generation + ~$2.750 human time.
+- [ ] **Sprints 1-N de creación de bloques (12-15 semanas content team):**
+  - [ ] Job Ready 74 bloques (~150h, 6 sprints).
+  - [ ] Travel Confident 39 bloques (~78h, 5 sprints).
+  - [ ] Daily Conversation 62 bloques (~125h, 7 sprints).
+  - **Estrategia:** crear DC primero (genera atomics universales que
+    reusan los otros 2 tracks).
+- [ ] Garantizar 5+ assets B1, 5+ B2, 3+ C1 para cada sub-skill core
+  (verificar al completar tracks).
 - [ ] Build admin panel básico para review (Next.js + Tailwind).
-- [ ] Pipeline de generación con prompts iniciales.
-- [ ] Pipeline de validación automática.
+- [ ] Pipeline de generación con prompts (ya documentado en
+  `atomics-catalog-seed.md` §9 — pendiente código).
+- [ ] Pipeline de validación automática (ver
+  `content-creation-system.md` §5.3).
 
 ### 5.5 Métricas y experimentación
 
