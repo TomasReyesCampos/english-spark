@@ -742,10 +742,11 @@ Open-ended (años de práctica).
 > **Detalle bloque-por-bloque por track** vive en docs dedicados:
 > - Job Ready (74 bloques): [`track-job-ready-blocks.md`](track-job-ready-blocks.md).
 > - Travel Confident (39 bloques): [`track-travel-confident-blocks.md`](track-travel-confident-blocks.md).
-> - Daily Conversation: pendiente (próximo en prioridad).
+> - Daily Conversation (62 bloques): [`track-daily-conversation-blocks.md`](track-daily-conversation-blocks.md).
 >
 > Esta sección documenta la **distribución agregada**; los docs
 > referenciados son la fuente de verdad para crear contenido del track.
+> Total MVP: **175 bloques** (74+39+62) cubriendo B1-B2+.
 
 Total estimado de blocks por intersección track × CEFR:
 
