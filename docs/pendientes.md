@@ -233,6 +233,17 @@ existentes pero aún no se han creado:
   tasks IA foundational (`generate_audio_tts`, `generate_image`,
   `validate_image_no_text`). Sigue en exploración: video generation
   pipelines (HeyGen/Hedra/Runway), voice library final.
+
+- [ ] **Sporadic questions durante el trial Day 1-2** — diseño
+  detallado en
+  [`docs/explorations/sporadic-questions.md`](explorations/sporadic-questions.md).
+  Target: Fase 1.5 (semanas 5-8 MVP, después del onboarding básico).
+  Toca `student-profile-and-assessment`, `ai-roadmap-system`,
+  `pedagogical-system`, `assessment-content-bank`, `data-and-events`.
+  Incluye: pool de ~58 items (self-assessment, micro audio, vocab/grammar
+  quick checks), throttling estricto (max 1-2/sesión, max 5-7 total
+  Day 1-2), mismatch detection, pre-data para reducir duración del
+  assessment formal -2 a -4 min. 6 decisiones abiertas por cerrar.
   Toca `content-creation-system`, `pedagogical-system`,
   `ai-gateway-strategy`, `sparks-system`. Incluye:
   - Sistema de labels que descompone `AssetType` en dimensiones.
