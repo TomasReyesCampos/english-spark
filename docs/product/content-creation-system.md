@@ -238,7 +238,14 @@ Ver §8.3 para schema.
 Cuando un atomic tiene `use_count = 0` después de 90 días: candidato a
 archivar. Cron mensual flagea.
 
-### 3.6 Detalles específicos en exploración
+### 3.6 Seed inicial autoritativo (~350 atomics MVP)
+
+El **catálogo seed completo** con los 6 characters detallados, 12
+voces base, 350 atomics enumerados con prompts y costos vive en
+[`atomics-catalog-seed.md`](atomics-catalog-seed.md). Esa es la
+fuente de verdad para el batch de generación inicial.
+
+### 3.7 Detalles específicos en exploración
 
 Los detalles concretos de **generación de video, imagen y audio TTS**
 (qué proveedores, prompts templates, costos por dominio) están en
