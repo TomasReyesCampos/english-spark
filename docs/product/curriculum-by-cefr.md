@@ -739,13 +739,13 @@ Open-ended (años de práctica).
 
 ## 11. Matriz tracks × CEFR
 
-> **Detalle bloque-por-bloque del track Job Ready** (los 74 bloques
-> con sub-skills, prerequisites, asset sequence y mastery criteria)
-> vive en [`track-job-ready-blocks.md`](track-job-ready-blocks.md).
-> Esta sección documenta la **distribución agregada**; el doc
-> referenciado es la fuente de verdad para crear contenido del track.
-> Travel Confident y Daily Conversation tendrán docs análogos cuando
-> se prioricen.
+> **Detalle bloque-por-bloque por track** vive en docs dedicados:
+> - Job Ready (74 bloques): [`track-job-ready-blocks.md`](track-job-ready-blocks.md).
+> - Travel Confident (39 bloques): [`track-travel-confident-blocks.md`](track-travel-confident-blocks.md).
+> - Daily Conversation: pendiente (próximo en prioridad).
+>
+> Esta sección documenta la **distribución agregada**; los docs
+> referenciados son la fuente de verdad para crear contenido del track.
 
 Total estimado de blocks por intersección track × CEFR:
 
