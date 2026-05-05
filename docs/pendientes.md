@@ -101,12 +101,20 @@ para detalle):
 
 - [ ] ¿Permitir que el usuario edite manualmente su roadmap (skip, reorder)?
   Pros: agency. Contras: rompe coherencia pedagógica.
-- [ ] ¿Tracks múltiples activos simultáneamente o uno solo? Empezar con uno.
-- [ ] ¿Cómo manejar usuarios que cambian de objetivo a mitad de roadmap?
-  ¿Regenerar entero o mergear?
-- [ ] ¿Certificados al completar tracks? ¿En qué momento (100% o mastery
-  promedio X)?
-- [ ] Política de re-evaluación: ¿mini-test cada N semanas para recalibrar?
+- [x] **¿Tracks múltiples activos simultáneamente o uno solo?** ✓ CERRADO
+  2026-05 por **ADR-007**: un solo track activo a la vez en MVP. Switch
+  permitido vía Settings (rate limit 14 días). Sub-skill mastery transfiere
+  globalmente; block completion es por-track. Multi-track simultáneo se
+  reconsidera año 2 con datos.
+- [x] **¿Cómo manejar usuarios que cambian de objetivo mid-roadmap?**
+  ✓ CERRADO. Regenerar con confirmación si `significant_change = true`.
+  Detalle en `ai-roadmap-system.md` §14.3 y ADR-007.
+- [x] **¿Certificados al completar tracks?** ✓ CERRADO. Al completar
+  100% Y mastery promedio > 70%. Detalle en `ai-roadmap-system.md`
+  §14.4.
+- [x] **Política de re-evaluación: mini-test cada N semanas?** ✓ CERRADO.
+  Pro/Premium: cada 4 semanas. Básico: cada 8 semanas. Detalle en
+  `ai-roadmap-system.md` §14.5 y `student-profile-and-assessment.md` §8.1.
 
 ### 1.3 Sistema pedagógico
 *(de `product/pedagogical-system.md`)*

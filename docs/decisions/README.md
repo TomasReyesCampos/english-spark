@@ -67,10 +67,11 @@ NO escribir ADR para:
 |----|--------|--------|
 | [ADR-001](ADR-001-ai-gateway.md) | Capa de abstracción AI Gateway | Accepted |
 | [ADR-002](ADR-002-platform-strategy.md) | Mobile-first con React Native + Expo | Accepted |
-| ADR-003 | Sistema de Sparks como unidad de consumo | Pendiente |
-| ADR-004 | Firebase Cloud Messaging para push | Pendiente |
-| ADR-005 | Firebase Authentication | Pendiente |
-| ADR-006 | Free trial 7 días + assessment día 7 | Pendiente |
+| [ADR-003](ADR-003-sparks-system.md) | Sistema de Sparks como unidad de consumo | Accepted |
+| [ADR-004](ADR-004-notifications-fcm.md) | Firebase Cloud Messaging para push | Accepted |
+| [ADR-005](ADR-005-firebase-auth.md) | Firebase Authentication | Accepted |
+| [ADR-006](ADR-006-trial-assessment.md) | Free trial 7 días + assessment día 7 | Accepted |
+| [ADR-007](ADR-007-multi-track-strategy.md) | Single track activo a la vez en MVP | Accepted |
 
 ---
 
