@@ -16,7 +16,8 @@ Resumen de lo cerrado en la ronda más reciente (referenciar §1-§5
 para detalle):
 
 **Decisiones cerradas:**
-- Locale único MVP: mexicano-tuteo (CLAUDE.md §10, reglas.md, i18n.md).
+- Locale único MVP: mexicano-tuteo (CLAUDE.md §10, reglas.md, i18n.md,
+  formalizado en **ADR-008**).
 - Assessment timing: 3 niveles (locked / optional / soft / firm) según
   día del trial (§1.1).
 - CEFR sampling para assessment: hybrid self-perceived + measured

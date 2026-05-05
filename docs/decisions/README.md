@@ -72,6 +72,7 @@ NO escribir ADR para:
 | [ADR-005](ADR-005-firebase-auth.md) | Firebase Authentication | Accepted |
 | [ADR-006](ADR-006-trial-assessment.md) | Free trial 7 días + assessment día 7 | Accepted |
 | [ADR-007](ADR-007-multi-track-strategy.md) | Single track activo a la vez en MVP | Accepted |
+| [ADR-008](ADR-008-spanish-locale-strategy.md) | Mexicano-tuteo como locale único MVP | Accepted |
 
 ---
 
