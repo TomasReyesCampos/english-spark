@@ -809,6 +809,56 @@ interface CompositeCreatedPayload {
 }
 ```
 
+### 5.13 Sporadic questions (v1.2)
+
+Eventos del sistema de sporadic questions
+(`student-profile-and-assessment.md` §7.1).
+
+```typescript
+// sporadic_question.shown
+interface SporadicQuestionShownPayload {
+  user_id: string;
+  question_id: string;
+  category: string;
+  trigger_context: 'post_exercise' | 'pre_session_close' | 'achievement_unlock';
+  session_id: string;
+}
+
+// sporadic_question.answered
+interface SporadicQuestionAnsweredPayload {
+  user_id: string;
+  question_id: string;
+  response_id: string;
+  duration_seconds: number;
+  flagged_likely_fake: boolean;       // detección heurística
+}
+
+// sporadic_question.skipped
+interface SporadicQuestionSkippedPayload {
+  user_id: string;
+  question_id: string;
+  consecutive_skips: number;          // para throttle adaptativo
+}
+
+// sporadic.mismatch_detected
+// Cuando self-perception ≥ 4 pero measured ≤ 60 (o inverso)
+interface SporadicMismatchPayload {
+  user_id: string;
+  dimension: string;
+  self_reported: number;
+  measured_score: number;
+  mismatch_type: 'self_high_measured_low' | 'self_low_measured_high';
+}
+
+// sporadic.paused
+// Después de 3 skips consecutivos
+interface SporadicPausedPayload {
+  user_id: string;
+  paused_until: string;
+  reason: 'consecutive_skips' | 'user_setting' | 'assessment_completed';
+}
+```
+
 ---
 
 ## 6. Product events (PostHog)

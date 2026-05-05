@@ -732,6 +732,136 @@ No tácticas agresivas. Estrategia:
 
 ---
 
+## 7.1 Sporadic data collection (pre-assessment, v1.2)
+
+> **Promovido desde** [`docs/explorations/sporadic-questions.md`](../explorations/sporadic-questions.md)
+> en 2026-05. Esta sección establece el principio y schema. Detalles
+> finos (UX, pool de items, throttle) viven en la exploración.
+
+### 7.1.1 Concepto
+
+Entre Day 1 y assessment_completion, el sistema presenta
+**micro-preguntas esporádicas** (5-30s, max 1-2 por sesión) que
+calibran contenido en tiempo real y pre-arman data para reducir
+duración del assessment formal.
+
+**Lifespan:** Day 1 hasta `student_profiles.assessment_completed_at IS NOT NULL`.
+Una vez completado el assessment formal, sporadic termina.
+
+### 7.1.2 5 categorías del pool
+
+1. Self-assessment dimensional (~7 items): listening, reading,
+   speaking, vocab, grammar, pronunciación, frustración.
+2. Micro audio captures (~10 items): frases targeting phonemes
+   específicos.
+3. Vocab quick checks (~20): MC ~5s.
+4. Grammar quick checks (~20): correct/wrong.
+5. Goal validation (~1): detección de cambio de objetivo.
+
+Total MVP: **~58 items**.
+
+### 7.1.3 Throttle (resumen)
+
+- Max 1-2 por sesión.
+- Max 3 por día.
+- Max 8-12 totales pre-assessment.
+- 3 skips consecutivos → pausa 24h.
+- Setting para desactivar manualmente.
+
+### 7.1.4 Schema
+
+```sql
+CREATE TABLE sporadic_questions (
+  id              TEXT PRIMARY KEY,
+  category        TEXT NOT NULL,                -- 'self_assessment', 'micro_audio', etc.
+  cefr_level      TEXT,
+  goal_relevance  TEXT[] DEFAULT '{}',
+  target_dimension TEXT,
+  content         JSONB NOT NULL,
+  estimated_seconds INT NOT NULL,
+  weight_in_calibration NUMERIC(3,2) DEFAULT 0.5,
+  approved        BOOLEAN NOT NULL DEFAULT false,
+  archived        BOOLEAN NOT NULL DEFAULT false,
+  use_count       INT NOT NULL DEFAULT 0,
+  skip_count      INT NOT NULL DEFAULT 0,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE sporadic_responses (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  question_id     TEXT NOT NULL REFERENCES sporadic_questions(id),
+  asked_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  responded_at    TIMESTAMPTZ,
+  skipped         BOOLEAN NOT NULL DEFAULT false,
+  response_data   JSONB,
+  audio_atomic_id TEXT REFERENCES media_atomics(id),
+  scoring_result  JSONB,
+  session_id      TEXT,
+  trigger_context TEXT,
+  flagged_likely_fake BOOLEAN NOT NULL DEFAULT false,
+  flag_reason     TEXT
+);
+
+CREATE INDEX idx_sr_user_date ON sporadic_responses(user_id, asked_at DESC);
+CREATE INDEX idx_sr_user_question ON sporadic_responses(user_id, question_id);
+
+-- Log para entrenar ML de detección de respuestas fake (decisión §10.6)
+CREATE TABLE sporadic_responses_ml_training (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  response_id     UUID NOT NULL REFERENCES sporadic_responses(id),
+  flag_signals    JSONB NOT NULL,
+  user_state_snapshot JSONB,
+  logged_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Modificación a student_profiles
+ALTER TABLE student_profiles
+  ADD COLUMN self_reported_dimensions JSONB DEFAULT '{}',
+  ADD COLUMN sporadic_mismatch_flags TEXT[] DEFAULT '{}',
+  ADD COLUMN sporadic_paused_until TIMESTAMPTZ;
+```
+
+### 7.1.5 Detección de respuestas fake
+
+Heurísticas at-time-of-response:
+- Multiple choice: misma opción en 3+ self-assessment consecutivas.
+- Self-assessment: tiempo de respuesta < 2s con 5 opciones.
+- Audio capture: silencio total > 70% del audio.
+- Goal validation: cambio de objetivo cada vez que se pregunta.
+
+Si flag `likely_fake = true`:
+- NO entra a calibración (no afecta `self_reported_dimensions`).
+- SÍ se persiste con flag.
+- Log a `sporadic_responses_ml_training` para entrenar detector futuro
+  (decisión cerrada §10.6 de la exploración).
+- NO notificar al user del flag.
+
+### 7.1.6 Mismatch detection
+
+Si self-perception ≥ 4 pero measured score ≤ 60 (o inverso):
+- Flag en `sporadic_mismatch_flags`.
+- Cuando assessment formal corra, considerar la discrepancia para
+  ajustar tono del results screen
+  (`post-assessment-flow.md` §3.5).
+
+### 7.1.7 Effect en roadmap provisional
+
+Las respuestas (no-fake) reordenan blocks del roadmap provisional Day
+1-2 (NO regeneran). Detalle en `ai-roadmap-system.md` §7.4.
+
+### 7.1.8 Pre-data para assessment formal
+
+Cuando assessment se construye, sporadic responses no-fake permiten:
+- Skip de preguntas redundantes en Parte 1 del assessment formal.
+- Audio captures contribuyen a `user_subskill_mastery` con peso
+  reducido (0.5x vs 1.0x del assessment formal).
+
+Reduce duración del assessment de 20 min a 15-17 min sin perder
+calidad de data.
+
+---
+
 ## 8. Re-evaluación periódica
 
 ### 8.1 Cadencia recomendada

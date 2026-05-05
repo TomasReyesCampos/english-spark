@@ -59,6 +59,14 @@ async function buildAssessmentSession(
   // Ver student-profile-and-assessment.md §13.2
   const cefrDecision = determineCefrForAssessment(userProfile);
 
+  // v1.2: Skip preguntas redundantes si ya tenemos respuestas válidas
+  // de sporadic questions (no flagged como fake).
+  // Ver student-profile-and-assessment.md §7.1.8
+  const sporadicResponses = await getSporadicResponsesByUser(userProfile.user_id, {
+    only_non_fake: true,
+  });
+  const skipQuestions = inferRedundantQuestions(sporadicResponses);
+
   if (cefrDecision.show_choice) {
     // Cliente muestra UI: "Detectamos X, declaraste Y. ¿Cuál prefieres?"
     return { user_choice_required: true, options: cefrDecision.options };

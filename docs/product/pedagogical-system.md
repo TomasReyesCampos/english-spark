@@ -291,6 +291,42 @@ def map_dimensions_to_cefr(scores: MasteryDimensions) -> str:
 Estos thresholds **deben recalibrarse** después del paso de calibración
 inicial (§7.1) y persistirse en `pedagogical_config`.
 
+### 2.6 Source weight: sporadic vs assessment vs exercise (v1.2)
+
+> Promovido desde [`docs/explorations/sporadic-questions.md`](../explorations/sporadic-questions.md).
+
+Los attempts que llegan al sistema de scoring tienen un campo `source`
+que determina su peso en la actualización de mastery:
+
+| `source` | Weight | Origen |
+|----------|-------:|--------|
+| `exercise` | 1.0 | Ejercicio normal del roadmap (default) |
+| `assessment` | 1.0 | Ejercicio del assessment formal Day 7 |
+| `mini_test` | 1.0 | Mini-test del onboarding Day 0 |
+| `sporadic` | 0.5 | Sporadic question audio capture (pre-assessment) |
+| `test_out` | 1.0 | Test-out voluntario (§4.5) |
+| `correction` | 0.0 | Sólo log, no actualiza mastery |
+
+**Implementación:**
+
+```python
+def apply_attempt_to_subskill_mastery(attempt, subskill_id):
+    base_delta = (attempt.score - current_score) * learning_rate
+    weighted_delta = base_delta * SOURCE_WEIGHTS[attempt.source]
+    new_score = clamp(current_score + weighted_delta, 0, 100)
+    return new_score
+```
+
+**Razón del 0.5x para sporadic:**
+- Audio captures cortas (5-15s) tienen menos data que ejercicios
+  completos.
+- Anti-noise: si user responde fake (no detectado), el impacto es
+  reducido.
+- Permite calibración pre-assessment sin overcommitting.
+
+**Anti-fake:** attempts con `flagged_likely_fake = true` tienen weight
+**0.0** (descartados de calibración pero logged).
+
 ---
 
 ## 3. Métodos de medición

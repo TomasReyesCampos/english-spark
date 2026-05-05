@@ -234,16 +234,17 @@ existentes pero aún no se han creado:
   `validate_image_no_text`). Sigue en exploración: video generation
   pipelines (HeyGen/Hedra/Runway), voice library final.
 
-- [ ] **Sporadic questions durante el trial Day 1-2** — diseño
-  detallado en
+- [x] **Sporadic questions durante pre-assessment** — **PROMOVIDO a
+  spec en 2026-05.** Diseño detallado en
   [`docs/explorations/sporadic-questions.md`](explorations/sporadic-questions.md).
-  Target: Fase 1.5 (semanas 5-8 MVP, después del onboarding básico).
-  Toca `student-profile-and-assessment`, `ai-roadmap-system`,
-  `pedagogical-system`, `assessment-content-bank`, `data-and-events`.
-  Incluye: pool de ~58 items (self-assessment, micro audio, vocab/grammar
-  quick checks), throttling estricto (max 1-2/sesión, max 5-7 total
-  Day 1-2), mismatch detection, pre-data para reducir duración del
-  assessment formal -2 a -4 min. 6 decisiones abiertas por cerrar.
+  Specs tocadas: `student-profile-and-assessment.md` §7.1,
+  `ai-roadmap-system.md` §7.4, `pedagogical-system.md` §2.6,
+  `assessment-content-bank.md` §1.2, `data-and-events.md` §5.13.
+  Decisiones cerradas: lifespan = Day 1 hasta assessment completion
+  (NO post-assessment), free path (no cobra Sparks), ML adaptativo
+  post-MVP, no consent extra (consent_audio_processing cubre),
+  respuestas fake = ignorar + log para ML futuro. Implementación
+  Fase 1.5.
   Toca `content-creation-system`, `pedagogical-system`,
   `ai-gateway-strategy`, `sparks-system`. Incluye:
   - Sistema de labels que descompone `AssetType` en dimensiones.

@@ -1,11 +1,17 @@
-# Exploración: Sporadic questions durante la fase "unknown"
+# Exploración: Sporadic questions durante la fase pre-assessment
 
-> Micro-preguntas (5-30s) intercaladas en sesiones del trial Day 1-2
-> que calibran el contenido en tiempo real y pre-arman data para el
-> assessment formal del Day 3+. Bajo costo de fricción, alto valor de
-> calibración.
+> Micro-preguntas (5-30s) intercaladas en sesiones desde Day 1 hasta
+> que el user complete el assessment formal. Calibran el contenido en
+> tiempo real y pre-arman data para el assessment. Bajo costo de
+> fricción, alto valor de calibración.
 
-**Status:** Exploración (no es spec final).
+**Status:** **Decisiones cerradas + promovido a spec (2026-05).**
+Specs tocadas: `student-profile-and-assessment.md`,
+`ai-roadmap-system.md`, `pedagogical-system.md`,
+`assessment-content-bank.md`, `data-and-events.md`. Esta exploración
+queda como **referencia ampliada** del diseño; las specs tienen los
+puntos críticos.
+
 **Owner:** —
 **Target de implementación:** Fase 1.5 (semanas 5-8 del MVP, después
 del onboarding básico está sólido).
@@ -115,11 +121,17 @@ Day 1: 1-2 sporadic questions (entre ejercicios)
 Day 2: 1-2 sporadic questions
        ↓
 Day 3-6: 0-1 sporadic questions (assessment ya disponible o
-        próximo, foco cambia a assessment)
+        próximo; sigue siendo útil hasta que tome el assessment)
        ↓
-Day 7+: Sporadic questions para re-calibration ocasional
-        (1/semana max, opcional)
+Day 7+: 0-1 sporadic questions hasta que complete el assessment
+       ↓
+Assessment completado → SPORADIC TERMINA (decisión cerrada §15.1)
 ```
+
+**Razón del corte post-assessment:** una vez que tenemos data formal
+completa del assessment, sporadic agregaría ruido marginal sin valor.
+Profile completo + observed_behavior + assessment_results es
+suficiente.
 
 ---
 
@@ -354,11 +366,12 @@ laborales, o cambió tu objetivo?"
 |-------------|-------|
 | Max sporadic questions por sesión | 2 |
 | Max sporadic questions por día | 3 |
-| Max sporadic questions Day 1-2 total | 5-7 |
+| Max sporadic questions pre-assessment total | 8-12 (dependiendo cuándo tome el assessment) |
 | Min tiempo entre 2 sporadic questions de la misma sesión | 5 min |
 | Min tiempo después de app open antes de la primera | 2 min |
 | NO durante un ejercicio en curso | Hard rule |
 | NO antes de que user complete su primer ejercicio del día | Hard rule |
+| NO después de que user complete el assessment formal | Hard rule (decisión §15.1) |
 
 ### 4.2 Momentos óptimos para preguntar
 
@@ -681,58 +694,89 @@ Agregar eventos:
 
 ---
 
-## 10. Decisiones a tomar antes de promover a spec
+## 10. Decisiones cerradas (2026-05)
 
-### 10.1 ¿Por qué no usar sporadic questions también en Day 7+?
+### 10.1 ¿Sporadic continúa post-Day 7? **NO** ✓
 
-**Pro:** mantener engagement, calibración continua.
-**Contra:** después del assessment ya tenemos data formal completa;
-sporadic agrega ruido marginal.
+**Razón:** una vez que el user completa el assessment formal, tenemos
+data completa (profile + observed_behavior + assessment_results).
+Sporadic agregaría ruido marginal. Lifespan: **Day 1 hasta que complete
+el assessment** (puede ser Day 3, 5, 7+ según cuándo lo tome).
 
-**Pendiente:** decidir si sporadic se mantiene como mecanismo
-permanente (1 por semana max) o solo Day 1-2.
+**Implementación:** condition `student_profile.assessment_completed_at IS NULL`
+en query de elegibilidad.
 
-### 10.2 ¿Las audio captures cuestan Sparks?
+### 10.2 ¿Audio captures cobran Sparks? **NO** ✓
 
-**No en la propuesta actual.** Son data collection, no premium feature.
-Pero usan AI Gateway (TTS para frase + STT del user + scoring).
+**Razón:** son data collection, no premium feature. Free path en
+sparks-system. Costo cubierto por el plan (~$0.01/captura, $0.05 total
+por user en pre-assessment).
 
-**Costo estimado:** ~$0.01 por audio capture procesado. A 5 por user
-en trial = $0.05. Aceptable.
+**Implementación:** el AI Gateway invoca `transcribe_user_audio` +
+`score_pronunciation` con `sparks_operation_id: null` para sporadic.
 
-**Pendiente:** confirmar que `sporadic` es free path en sparks-system,
-no cobra.
+### 10.3 ¿Throttle adaptativo con ML? **SÍ (post-MVP)** ✓
 
-### 10.3 ¿Throttle adaptativo más sofisticado?
+**Razón:** valor real cuando hay data acumulada (>10k users con
+respuestas). En MVP, throttle simple (3 skip → pause 24h). Post-MVP
+agregar ML que aprende qué tipos funcionan mejor por user.
 
-**Propuesta actual:** si user salta 3+ consecutivos, pausa 24h.
+**Implementación MVP:** simple (regla de 3 consecutive skips).
+**Implementación post-MVP:** model que predice probabilidad de answer
+vs skip por (user_id, question_type, time_of_day, post_score) →
+seleccionar question con mejor probabilidad de respuesta.
 
-**Alternativa:** ML que aprende qué tipos de sporadic questions
-funcionan mejor para cada user (algunos prefieren self-assessment,
-otros micro audio).
+### 10.4 ¿Lifespan? **Day 1 hasta assessment completion** ✓
 
-**Pendiente:** mantener simple en MVP, sofisticación post-MVP.
+(Misma decisión que §10.1 — cerrada en conjunto.)
 
-### 10.4 ¿Sporadic questions también para users premium pasados Day 7?
+### 10.5 ¿Consent adicional para audio captures? **NO** ✓
 
-**Si SÍ:** es feature permanente, requiere settings.
-**Si NO:** solo Day 1-2 (lifespan corto).
+**Razón:** `consent_audio_processing` del onboarding ya cubre toda
+captura de audio en la app, sea ejercicio normal o sporadic. No se
+requiere consent extra.
 
-**Pendiente:** decidir scope final.
+**Validación legal:** confirmado en review (alineado con privacy
+policy §3 y `business/legal-compliance.md` §7.2).
 
-### 10.5 ¿Audio captures requieren consent explícito?
+### 10.6 ¿Respuestas claramente fake? **Ignorar + log para ML futuro** ✓
 
-**Default actual:** consent_audio_processing del onboarding ya cubre.
+**Razón:** no podemos confiar 100% en heurísticas para detectar fake;
+mejor descartar de calibración pero mantener log para entrenar un ML
+de detección.
 
-**Pendiente:** verificar si las capturas sporadic requieren consent
-adicional según privacy/legal review.
+**Implementación:**
 
-### 10.6 ¿Cómo manejar respuestas claramente fake?
+1. **Detección heurística** al recibir respuesta:
+   - Multiple choice: misma opción en 3+ self-assessment consecutivas.
+   - Self-assessment: tiempo de respuesta < 2s en preguntas con 5
+     opciones.
+   - Audio capture: silencio total > 70% del audio.
+   - Goal validation: cambio de objetivo cada vez que se pregunta.
 
-Ej: user responde "5" a todas las preguntas de self-perception en 2s.
+2. **Si flag `likely_fake = true`:**
+   - **NO entra a calibración** (no afecta `self_reported_dimensions`,
+     no afecta peso en mastery).
+   - **SÍ se persiste** en `sporadic_responses` con
+     `flagged_likely_fake = true`.
+   - Log a `ml_training_data` para entrenar detector futuro.
 
-**Pendiente:** detección automática + reduce weight de las respuestas
-en calibration.
+3. **No notificar al user** del flag (evitar enseñar cómo evadir).
+
+```sql
+ALTER TABLE sporadic_responses
+  ADD COLUMN flagged_likely_fake BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN flag_reason TEXT;
+
+CREATE TABLE sporadic_responses_ml_training (
+  -- Append-only log de respuestas flagged
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  response_id     UUID NOT NULL REFERENCES sporadic_responses(id),
+  flag_signals    JSONB NOT NULL,
+  user_state_snapshot JSONB,                    -- contexto para entrenar
+  logged_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
 
 ---
 

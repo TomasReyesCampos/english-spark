@@ -487,6 +487,44 @@ El motor aplica diffs al roadmap existente. Preserva historial.
 
 Por usuario activo: ~$0.01 USD/mes de mantenimiento de roadmap.
 
+### 7.4 Adaptación suave por sporadic responses (v1.2)
+
+> Promovido desde [`docs/explorations/sporadic-questions.md`](../explorations/sporadic-questions.md).
+
+Durante el período pre-assessment (Day 1 hasta `assessment_completed_at`),
+las respuestas a sporadic questions (ver
+`student-profile-and-assessment.md` §7.1) **NO regeneran el roadmap**
+pero ajustan el **orden** de los blocks del roadmap provisional.
+
+Reglas de ajuste:
+
+| Respuesta sporadic | Ajuste al orden del roadmap |
+|-------------------|------------------------------|
+| Listening self ≤ 2 | Priorizar bloques de listening slow-speed |
+| Listening self ≥ 4 | Permitir bloques de listening native-speed |
+| Speaking confidence ≤ 2 | Empezar con drills, no roleplay free |
+| Speaking confidence ≥ 4 | Permitir roleplay free temprano |
+| Vocabulary self ≤ 2 | Más vocab in context exercises |
+| Pronunciación self ≤ 2 | Más drill, menos free response |
+| Frustración = "no encontrar palabras" | Vocab building blocks priorizados |
+
+**Reglas de anti-noise:**
+- Ignorar respuestas con `flagged_likely_fake = true` (decisión §10.6
+  de exploración).
+- Respuestas tienen peso reducido (0.5x) en la calibración vs scores
+  observados de ejercicios reales.
+- Cross-validate con `observed_behavior`: si self-perception
+  contradice scores fuertemente, mantener priorización por scores
+  pero flagear mismatch para tono adaptado en post-assessment results.
+
+**Implementación:** función `adjustRoadmapOrderBySporadic(roadmap_id,
+user_id)` corre al recibir cada sporadic response no-fake. Modifica
+`structure.levels[].blocks[].order_within_level` sin cambiar set de
+blocks ni level structure.
+
+Una vez completado el assessment formal, sporadic adjustments dejan
+de aplicarse y `generateDefinitiveRoadmap` toma control total.
+
 ---
 
 ## 8. Insights humanizados
