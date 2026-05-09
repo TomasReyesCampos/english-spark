@@ -110,6 +110,17 @@ Stories con cambios de schema agregan:
 | [US-004](stories/US-004-apple-signin.md) | Apple Sign In flow | EPIC-01 | Draft | 5 |
 | [US-005](stories/US-005-email-password-auth.md) | Email + password auth | EPIC-01 | Draft | 5 |
 | [US-006](stories/US-006-anonymous-mode.md) | Anonymous mode (trial sin registro) | EPIC-01 | Draft | 3 |
+| [US-007](stories/US-007-jwt-validation-middleware.md) | JWT validation middleware en Workers | EPIC-01 | Draft | 3 |
+| [US-008](stories/US-008-auth-sync-endpoint.md) | Endpoint `/auth/sync` Firebase ↔ Postgres | EPIC-01 | Draft | 5 |
+| [US-009](stories/US-009-signout-account-deletion.md) | Sign out + account deletion | EPIC-01 | Draft | 2 |
+| [US-010](stories/US-010-welcome-screen.md) | Welcome + saludo screen (Pantalla 2) | EPIC-01 | Draft | 2 |
+| [US-011](stories/US-011-location-question.md) | Pregunta ubicación (Pantalla 3) | EPIC-01 | Draft | 3 |
+| [US-012](stories/US-012-goal-deadline-questions.md) | Pregunta objetivo + deadline (Pantallas 4-5) | EPIC-01 | Draft | 3 |
+| [US-013](stories/US-013-professional-context-question.md) | Pregunta contexto profesional (Pantalla 6) | EPIC-01 | Draft | 2 |
+| [US-014](stories/US-014-self-assessment-time-questions.md) | Pregunta autoevaluación + tiempo (Pantalla 7) | EPIC-01 | Draft | 3 |
+| [US-015](stories/US-015-persist-onboarding-answers.md) | Persistir respuestas en student_profile | EPIC-01 | Draft | 2 |
+
+**Total acumulado: 49 puntos en 15 stories.**
 
 (Más stories se agregan a medida que se generen.)
 
