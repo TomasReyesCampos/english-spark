@@ -150,19 +150,23 @@ para detalle):
   derechos.
 - [ ] ¿Generar assets en tiempo real para usuarios con perfiles únicos?
   Posible pero costoso.
-- [x] **¿Versionado de atomics?** ✓ CERRADO 2026-05. Semver mayor con
-  sufijo `_v<n>` en el `id` del atomic. Permite evolución sin romper
-  composites existentes. Detalle en `atomics-catalog-seed.md` §2.
-- [x] **¿Cuántos characters en seed inicial?** ✓ CERRADO 2026-05. 6
-  characters (alex, grandma, sarah, mike, jamie, emma) con ~30 atomics
-  c/u. Más diluye memoria episódica del user. Detalle en §4 del seed.
-- [x] **¿Proveedores primarios de generación?** ✓ CERRADO 2026-05.
-  ElevenLabs (TTS), DALL-E 3 (imágenes), HeyGen (video talking-head),
-  Freesound CC0 (ambient), FFmpeg (distortion overlays). Detalle en §9
-  del seed.
-- [x] **¿12 voces base en voice pool?** ✓ CERRADO 2026-05. 12 voces
-  ElevenLabs cubriendo edades 22-70, M/F, accents US-General/Midwest/
-  Northeast. Post-MVP: 4-6 UK/AU. Detalle en §3 del seed.
+- [x] **¿Versionado de atomics?** ✓ CERRADO 2026-05 por **ADR-009**.
+  Semver mayor con sufijo `_v<n>` en el `id` del atomic. Permite
+  evolución sin romper composites existentes.
+- [x] **¿Cuántos characters en seed inicial?** ✓ CERRADO 2026-05 por
+  **ADR-009**. 6 characters (alex, grandma, sarah, mike, jamie, emma)
+  con ~30 atomics c/u.
+- [x] **¿Proveedores primarios de generación?** ✓ CERRADO 2026-05 por
+  **ADR-009**. ElevenLabs (TTS), DALL-E 3 (imágenes), HeyGen (video
+  talking-head), Freesound CC0 (ambient), FFmpeg (distortion overlays).
+- [x] **¿12 voces base en voice pool?** ✓ CERRADO 2026-05 por
+  **ADR-009**. 12 voces ElevenLabs cubriendo edades 22-70, M/F,
+  accents US-General/Midwest/Northeast.
+- [x] **¿Pipeline atomic+composite v1.2 con AI generation?** ✓ CERRADO
+  2026-05 por **ADR-009**. Modelo de 2 capas (`media_atomics` +
+  `learning_assets`), sistema de labels reemplaza enum AssetType
+  monolítico, validación humana TESOL obligatoria pre-aprobación,
+  reuse target ≥1.5x MVP, generation cost target ≤$1.50/composite.
 
 ---
 

@@ -780,7 +780,23 @@ quieras.
 
 ## 10. Tras "Empezar" del welcome
 
-User entra al **flujo normal del producto**:
+> **Detalle completo del welcome flow post-paywall** (5 pantallas
+> con copy literal mexicano-tuteo, algoritmo de selección del primer
+> ejercicio, edge cases, variantes por perfil) vive en
+> [`welcome-flow-post-paywall.md`](welcome-flow-post-paywall.md).
+> Esa es la fuente de verdad para los primeros ~6-7 minutos
+> post-pago, hasta que el user entra al flow normal del producto.
+
+User entra al **welcome flow post-paywall** (5 pantallas):
+1. Home premium reveal (animación + Sparks balance + plan badge).
+2. First exercise intro (preparación con expectativas claras).
+3. El ejercicio en sí (curado para max success: pronunciation drill
+   preferido).
+4. Success celebration (+ 5 Sparks bonus, +10 si Premium).
+5. What's next (próximos 2 bloques del roadmap).
+
+Después del welcome flow termina: user entra al **flujo normal del
+producto**:
 - Pantalla home con daily goal.
 - Notificaciones activadas (preferences ya configuradas en
   onboarding).

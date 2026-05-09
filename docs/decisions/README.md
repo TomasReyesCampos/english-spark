@@ -73,6 +73,7 @@ NO escribir ADR para:
 | [ADR-006](ADR-006-trial-assessment.md) | Free trial 7 días + assessment día 7 | Accepted |
 | [ADR-007](ADR-007-multi-track-strategy.md) | Single track activo a la vez en MVP | Accepted |
 | [ADR-008](ADR-008-spanish-locale-strategy.md) | Mexicano-tuteo como locale único MVP | Accepted |
+| [ADR-009](ADR-009-content-creation-pipeline.md) | Pipeline atomic+composite v1.2 con AI generation | Accepted |
 
 ---
 
