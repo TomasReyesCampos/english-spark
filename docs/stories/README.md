@@ -95,7 +95,7 @@ Stories con cambios de schema agregan:
 | Epic | Título | Status | Stories estimadas |
 |------|--------|--------|------------------:|
 | [EPIC-01](epics/EPIC-01-auth-onboarding.md) | Auth + Onboarding (Sprint 0 foundational) | Draft (26 stories ready) | 26 |
-| [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (5/17 stories ready) | 17 |
+| [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (17 stories ready) | 17 |
 
 (Más epics se agregan según se planifiquen los siguientes sprints.)
 
@@ -141,12 +141,19 @@ Stories con cambios de schema agregan:
 | [US-034](stories/US-034-task-transcribe-audio.md) | Task `transcribe_user_audio` (Whisper) | EPIC-05 | Draft | 2 |
 | [US-035](stories/US-035-task-score-fluency.md) | Task `score_fluency` | EPIC-05 | Draft | 3 |
 | [US-036](stories/US-036-task-generate-notification-content.md) | Task `generate_notification_content` | EPIC-05 | Draft | 2 |
+| [US-037](stories/US-037-task-generate-audio-tts.md) | Task `generate_audio_tts` (ElevenLabs) | EPIC-05 | Draft | 3 |
+| [US-038](stories/US-038-task-generate-image.md) | Task `generate_image` (DALL-E 3) | EPIC-05 | Draft | 3 |
+| [US-039](stories/US-039-task-validate-image-no-text.md) | Task `validate_image_no_text` (OCR) | EPIC-05 | Draft | 2 |
+| [US-040](stories/US-040-task-detect-grammar-errors.md) | Task `detect_grammar_errors` | EPIC-05 | Draft | 3 |
+| [US-041](stories/US-041-logging-observability-dashboard.md) | Logging + observability dashboard | EPIC-05 | Draft | 3 |
+| [US-042](stories/US-042-prompt-versioning-audit.md) | Prompt versioning + audit trail | EPIC-05 | Draft | 3 |
+| [US-043](stories/US-043-admin-tasks-inspect-endpoint.md) | Admin endpoint para inspeccionar tasks | EPIC-05 | Draft | 2 |
 
-**Total acumulado: 114 puntos en 36 stories.**
+**Total acumulado: 133 puntos en 43 stories.**
 - EPIC-01: 26 stories (80 pts) — completo a nivel spec.
-- EPIC-05: 10/17 stories (32 pts) — Slices 1-2 listos.
+- EPIC-05: 17 stories (53 pts) — completo a nivel spec.
 
-(Más stories se agregan a medida que se generen.)
+(Más epics se agregan a medida que se planifiquen.)
 
 ---
 
