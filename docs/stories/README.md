@@ -136,10 +136,15 @@ Stories con cambios de schema agregan:
 | [US-029](stories/US-029-provider-adapters.md) | Provider adapter interface + Anthropic adapter | EPIC-05 | Draft | 5 |
 | [US-030](stories/US-030-multi-provider-fallback.md) | Multi-provider fallback chain | EPIC-05 | Draft | 3 |
 | [US-031](stories/US-031-cost-tracking-budget.md) | Cost tracking + budget enforcement | EPIC-05 | Draft | 3 |
+| [US-032](stories/US-032-task-generate-initial-roadmap.md) | Task `generate_initial_roadmap` | EPIC-05 | Draft | 5 |
+| [US-033](stories/US-033-task-score-pronunciation.md) | Task `score_pronunciation` (Azure) | EPIC-05 | Draft | 3 |
+| [US-034](stories/US-034-task-transcribe-audio.md) | Task `transcribe_user_audio` (Whisper) | EPIC-05 | Draft | 2 |
+| [US-035](stories/US-035-task-score-fluency.md) | Task `score_fluency` | EPIC-05 | Draft | 3 |
+| [US-036](stories/US-036-task-generate-notification-content.md) | Task `generate_notification_content` | EPIC-05 | Draft | 2 |
 
-**Total acumulado: 99 puntos en 31 stories.**
+**Total acumulado: 114 puntos en 36 stories.**
 - EPIC-01: 26 stories (80 pts) — completo a nivel spec.
-- EPIC-05: 5/17 stories (17 pts) — Slice 1 (foundation) listo.
+- EPIC-05: 10/17 stories (32 pts) — Slices 1-2 listos.
 
 (Más stories se agregan a medida que se generen.)
 
