@@ -119,10 +119,21 @@ Stories con cambios de schema agregan:
 | [US-013](stories/US-013-professional-context-question.md) | Pregunta contexto profesional (Pantalla 6) | EPIC-01 | Draft | 2 |
 | [US-014](stories/US-014-self-assessment-time-questions.md) | Pregunta autoevaluación + tiempo (Pantalla 7) | EPIC-01 | Draft | 3 |
 | [US-015](stories/US-015-persist-onboarding-answers.md) | Persistir respuestas en student_profile | EPIC-01 | Draft | 2 |
+| [US-016](stories/US-016-mic-permission-flow.md) | Mic permission flow + recovery | EPIC-01 | Draft | 3 |
+| [US-017](stories/US-017-mini-test-repeat-phrase.md) | Mini-test ejercicio 1 (repetir frase) | EPIC-01 | Draft | 3 |
+| [US-018](stories/US-018-mini-test-answer-question.md) | Mini-test ejercicio 2 (responder pregunta) | EPIC-01 | Draft | 3 |
+| [US-019](stories/US-019-mini-test-name-images.md) | Mini-test ejercicio 3 (nombrar imágenes) | EPIC-01 | Draft | 3 |
+| [US-020](stories/US-020-processing-screen-test-results.md) | Procesamiento screen + initial_test_results | EPIC-01 | Draft | 3 |
+| [US-021](stories/US-021-generate-initial-roadmap.md) | Generate initial roadmap (AI Gateway) | EPIC-01 | Draft | 5 |
+| [US-022](stories/US-022-roadmap-reveal-screen.md) | Roadmap initial reveal screen | EPIC-01 | Draft | 3 |
+| [US-023](stories/US-023-push-permission-flow.md) | Push permission flow | EPIC-01 | Draft | 2 |
+| [US-024](stories/US-024-first-exercise-intro.md) | First exercise intro screen | EPIC-01 | Draft | 2 |
+| [US-025](stories/US-025-onboarding-telemetry-events.md) | Telemetry events del onboarding (17 events) | EPIC-01 | Draft | 3 |
+| [US-026](stories/US-026-onboarding-edge-cases.md) | Edge cases handling del onboarding | EPIC-01 | Draft | 5 |
 
-**Total acumulado: 49 puntos en 15 stories.**
+**Total EPIC-01: 80 puntos en 26 stories. Listo para sprint planning.**
 
-(Más stories se agregan a medida que se generen.)
+(Más epics se agregan a medida que se planifiquen.)
 
 ---
 
