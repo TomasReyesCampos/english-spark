@@ -94,7 +94,8 @@ Stories con cambios de schema agregan:
 
 | Epic | Título | Status | Stories estimadas |
 |------|--------|--------|------------------:|
-| [EPIC-01](epics/EPIC-01-auth-onboarding.md) | Auth + Onboarding (Sprint 0 foundational) | Draft | ~20 |
+| [EPIC-01](epics/EPIC-01-auth-onboarding.md) | Auth + Onboarding (Sprint 0 foundational) | Draft (26 stories ready) | 26 |
+| [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (5/17 stories ready) | 17 |
 
 (Más epics se agregan según se planifiquen los siguientes sprints.)
 
@@ -130,10 +131,17 @@ Stories con cambios de schema agregan:
 | [US-024](stories/US-024-first-exercise-intro.md) | First exercise intro screen | EPIC-01 | Draft | 2 |
 | [US-025](stories/US-025-onboarding-telemetry-events.md) | Telemetry events del onboarding (17 events) | EPIC-01 | Draft | 3 |
 | [US-026](stories/US-026-onboarding-edge-cases.md) | Edge cases handling del onboarding | EPIC-01 | Draft | 5 |
+| [US-027](stories/US-027-ai-gateway-worker-skeleton.md) | AI Gateway Worker skeleton + routing | EPIC-05 | Draft | 3 |
+| [US-028](stories/US-028-task-registry-schema.md) | Task Registry schema + persistence | EPIC-05 | Draft | 3 |
+| [US-029](stories/US-029-provider-adapters.md) | Provider adapter interface + Anthropic adapter | EPIC-05 | Draft | 5 |
+| [US-030](stories/US-030-multi-provider-fallback.md) | Multi-provider fallback chain | EPIC-05 | Draft | 3 |
+| [US-031](stories/US-031-cost-tracking-budget.md) | Cost tracking + budget enforcement | EPIC-05 | Draft | 3 |
 
-**Total EPIC-01: 80 puntos en 26 stories. Listo para sprint planning.**
+**Total acumulado: 99 puntos en 31 stories.**
+- EPIC-01: 26 stories (80 pts) — completo a nivel spec.
+- EPIC-05: 5/17 stories (17 pts) — Slice 1 (foundation) listo.
 
-(Más epics se agregan a medida que se planifiquen.)
+(Más stories se agregan a medida que se generen.)
 
 ---
 
