@@ -98,6 +98,7 @@ Stories con cambios de schema agregan:
 | [EPIC-04](epics/EPIC-04-sparks-system.md) | Sparks system (paralelo Sprint 1-2) | Draft (15 stories ready) | 15 |
 | [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (17 stories ready) | 17 |
 | [EPIC-06](epics/EPIC-06-notifications-system.md) | Notifications system orchestrator (Sprint 2-3) | Draft (13 stories ready) | 13 |
+| [EPIC-07](epics/EPIC-07-roadmap-engine.md) | Roadmap engine completo (Sprint 2-4) | Draft (8/17 stories ready) | 17 |
 
 (Más epics se agregan según se planifiquen los siguientes sprints.)
 
@@ -178,14 +179,23 @@ Stories con cambios de schema agregan:
 | [US-069](stories/US-069-inactivity-detection.md) | Inactivity detection (D3/D7/D14) | EPIC-06 | Draft | 3 |
 | [US-070](stories/US-070-rate-limiter-durable-object.md) | Rate limiter Durable Object | EPIC-06 | Draft | 3 |
 | [US-071](stories/US-071-circuit-breaker-low-engagement.md) | Circuit breaker para low-engagement users | EPIC-06 | Draft | 2 |
+| [US-072](stories/US-072-roadmap-schemas.md) | Schema roadmaps + roadmap_blocks + block_completions | EPIC-07 | Draft | 3 |
+| [US-073](stories/US-073-roadmap-active-endpoint.md) | GET /roadmap/active + listing endpoints | EPIC-07 | Draft | 2 |
+| [US-074](stories/US-074-block-detail-endpoint.md) | Block detail + asset references endpoint | EPIC-07 | Draft | 1 |
+| [US-075](stories/US-075-tracks-switch-endpoint.md) | POST /tracks/switch endpoint con rate limit | EPIC-07 | Draft | 5 |
+| [US-076](stories/US-076-track-switch-ui.md) | Track switch UI + confirmation flow | EPIC-07 | Draft | 2 |
+| [US-077](stories/US-077-block-start-tracking.md) | Block start + status tracking | EPIC-07 | Draft | 2 |
+| [US-078](stories/US-078-block-completion-mastery.md) | Block completion + mastery propagation | EPIC-07 | Draft | 3 |
+| [US-079](stories/US-079-test-out-flow.md) | Test-out flow (skip via mini-assessment) | EPIC-07 | Draft | 3 |
 
-**Total acumulado: 210 puntos en 71 stories.**
+**Total acumulado: 231 puntos en 79 stories.**
 - EPIC-01: 26 stories (80 pts) — completo a nivel spec.
 - EPIC-04: 15 stories (41 pts) — completo a nivel spec.
 - EPIC-05: 17 stories (53 pts) — completo a nivel spec.
 - EPIC-06: 13 stories (36 pts) — completo a nivel spec.
+- EPIC-07: 8/17 stories (21 pts) — Slices 1-3 listos.
 
-(Más epics se agregan a medida que se planifiquen.)
+(Más stories se agregan a medida que se generen.)
 
 ---
 
