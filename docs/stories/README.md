@@ -97,6 +97,7 @@ Stories con cambios de schema agregan:
 | [EPIC-01](epics/EPIC-01-auth-onboarding.md) | Auth + Onboarding (Sprint 0 foundational) | Draft (26 stories ready) | 26 |
 | [EPIC-04](epics/EPIC-04-sparks-system.md) | Sparks system (paralelo Sprint 1-2) | Draft (15 stories ready) | 15 |
 | [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (17 stories ready) | 17 |
+| [EPIC-06](epics/EPIC-06-notifications-system.md) | Notifications system orchestrator (Sprint 2-3) | Draft (13 stories ready) | 13 |
 
 (Más epics se agregan según se planifiquen los siguientes sprints.)
 
@@ -164,11 +165,25 @@ Stories con cambios de schema agregan:
 | [US-056](stories/US-056-pack-purchase-flow.md) | Pack purchase flow (one-time Sparks pack) | EPIC-04 | Draft | 2 |
 | [US-057](stories/US-057-sparks-expiration-cron.md) | Sparks expiration cron (packs 6 meses) | EPIC-04 | Draft | 2 |
 | [US-058](stories/US-058-sparks-edge-cases.md) | Edge cases del Sparks system | EPIC-04 | Draft | 3 |
+| [US-059](stories/US-059-notifications-schema.md) | Schema notifications (tokens + preferences + log + scheduled) | EPIC-06 | Draft | 3 |
+| [US-060](stories/US-060-token-preferences-endpoints.md) | Token registration + preferences endpoints | EPIC-06 | Draft | 3 |
+| [US-061](stories/US-061-fcm-sender.md) | FCM HTTP v1 sender + OAuth token caching | EPIC-06 | Draft | 3 |
+| [US-062](stories/US-062-daily-reminders-cron.md) | Cron daily reminders timezone-aware | EPIC-06 | Draft | 5 |
+| [US-063](stories/US-063-ai-batch-content-generation.md) | AI batch nocturno content generation | EPIC-06 | Draft | 2 |
+| [US-064](stories/US-064-streak-at-risk-cron.md) | Streak at risk cron | EPIC-06 | Draft | 2 |
+| [US-065](stories/US-065-achievement-unlocked-notification.md) | Achievement unlocked notification handler | EPIC-06 | Draft | 3 |
+| [US-066](stories/US-066-sparks-events-handler.md) | Sparks events handler (low/depleted/expiring) | EPIC-06 | Draft | 3 |
+| [US-067](stories/US-067-payment-events-handler.md) | Payment events handler (failed/restriction) | EPIC-06 | Draft | 2 |
+| [US-068](stories/US-068-welcome-series-cron.md) | Welcome series cron (D1/D3/D5/D7) | EPIC-06 | Draft | 2 |
+| [US-069](stories/US-069-inactivity-detection.md) | Inactivity detection (D3/D7/D14) | EPIC-06 | Draft | 3 |
+| [US-070](stories/US-070-rate-limiter-durable-object.md) | Rate limiter Durable Object | EPIC-06 | Draft | 3 |
+| [US-071](stories/US-071-circuit-breaker-low-engagement.md) | Circuit breaker para low-engagement users | EPIC-06 | Draft | 2 |
 
-**Total acumulado: 174 puntos en 58 stories.**
+**Total acumulado: 210 puntos en 71 stories.**
 - EPIC-01: 26 stories (80 pts) — completo a nivel spec.
 - EPIC-04: 15 stories (41 pts) — completo a nivel spec.
 - EPIC-05: 17 stories (53 pts) — completo a nivel spec.
+- EPIC-06: 13 stories (36 pts) — completo a nivel spec.
 
 (Más epics se agregan a medida que se planifiquen.)
 
