@@ -98,7 +98,7 @@ Stories con cambios de schema agregan:
 | [EPIC-04](epics/EPIC-04-sparks-system.md) | Sparks system (paralelo Sprint 1-2) | Draft (15 stories ready) | 15 |
 | [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (17 stories ready) | 17 |
 | [EPIC-06](epics/EPIC-06-notifications-system.md) | Notifications system orchestrator (Sprint 2-3) | Draft (13 stories ready) | 13 |
-| [EPIC-07](epics/EPIC-07-roadmap-engine.md) | Roadmap engine completo (Sprint 2-4) | Draft (8/17 stories ready) | 17 |
+| [EPIC-07](epics/EPIC-07-roadmap-engine.md) | Roadmap engine completo (Sprint 2-4) | Draft (17 stories ready) | 17 |
 
 (Más epics se agregan según se planifiquen los siguientes sprints.)
 
@@ -187,15 +187,24 @@ Stories con cambios de schema agregan:
 | [US-077](stories/US-077-block-start-tracking.md) | Block start + status tracking | EPIC-07 | Draft | 2 |
 | [US-078](stories/US-078-block-completion-mastery.md) | Block completion + mastery propagation | EPIC-07 | Draft | 3 |
 | [US-079](stories/US-079-test-out-flow.md) | Test-out flow (skip via mini-assessment) | EPIC-07 | Draft | 3 |
+| [US-080](stories/US-080-assessment-session-start.md) | Assessment session start + orchestration 4 partes | EPIC-07 | Draft | 3 |
+| [US-081](stories/US-081-submit-assessment-exercise.md) | Submit assessment exercise + per-exercise scoring | EPIC-07 | Draft | 3 |
+| [US-082](stories/US-082-finalize-assessment-definitivo-roadmap.md) | Finalize assessment + roadmap definitivo generation | EPIC-07 | Draft | 5 |
+| [US-083](stories/US-083-assessment-results-reveal-flow.md) | Assessment results 8-screen reveal flow | EPIC-07 | Draft | 3 |
+| [US-084](stories/US-084-significant-change-detection.md) | significant_change detection on profile update | EPIC-07 | Draft | 2 |
+| [US-085](stories/US-085-roadmap-regeneration.md) | Roadmap regeneration on significant_change | EPIC-07 | Draft | 3 |
+| [US-086](stories/US-086-periodic-reevaluation-cron.md) | Re-evaluación periódica cron (cada 4-8 semanas) | EPIC-07 | Draft | 2 |
+| [US-087](stories/US-087-sporadic-questions-scheduling.md) | Sporadic questions scheduling + presentation | EPIC-07 | Draft | 3 |
+| [US-088](stories/US-088-sporadic-roadmap-reorder.md) | Sporadic responses scoring + roadmap reorder | EPIC-07 | Draft | 2 |
 
-**Total acumulado: 231 puntos en 79 stories.**
+**Total acumulado: 257 puntos en 88 stories.**
 - EPIC-01: 26 stories (80 pts) — completo a nivel spec.
 - EPIC-04: 15 stories (41 pts) — completo a nivel spec.
 - EPIC-05: 17 stories (53 pts) — completo a nivel spec.
 - EPIC-06: 13 stories (36 pts) — completo a nivel spec.
-- EPIC-07: 8/17 stories (21 pts) — Slices 1-3 listos.
+- EPIC-07: 17 stories (47 pts) — completo a nivel spec.
 
-(Más stories se agregan a medida que se generen.)
+(Más epics se agregan a medida que se planifiquen.)
 
 ---
 
