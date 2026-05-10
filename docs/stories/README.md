@@ -95,7 +95,7 @@ Stories con cambios de schema agregan:
 | Epic | Título | Status | Stories estimadas |
 |------|--------|--------|------------------:|
 | [EPIC-01](epics/EPIC-01-auth-onboarding.md) | Auth + Onboarding (Sprint 0 foundational) | Draft (26 stories ready) | 26 |
-| [EPIC-04](epics/EPIC-04-sparks-system.md) | Sparks system (paralelo Sprint 1-2) | Draft (6/15 stories ready) | 15 |
+| [EPIC-04](epics/EPIC-04-sparks-system.md) | Sparks system (paralelo Sprint 1-2) | Draft (15 stories ready) | 15 |
 | [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (17 stories ready) | 17 |
 
 (Más epics se agregan según se planifiquen los siguientes sprints.)
@@ -155,13 +155,22 @@ Stories con cambios de schema agregan:
 | [US-047](stories/US-047-sparks-charge-endpoint.md) | Sparks charge endpoint (cobro previo idempotente) | EPIC-04 | Draft | 5 |
 | [US-048](stories/US-048-sparks-refund.md) | Sparks refund (en caso de fallo de operación) | EPIC-04 | Draft | 3 |
 | [US-049](stories/US-049-audit-log-validation-cron.md) | Audit log inmutable validation cron | EPIC-04 | Draft | 2 |
+| [US-050](stories/US-050-sparks-award-bonus.md) | Sparks awardBonus (logros, referrals, comeback) | EPIC-04 | Draft | 2 |
+| [US-051](stories/US-051-low-sparks-event-trigger.md) | Low Sparks event trigger | EPIC-04 | Draft | 2 |
+| [US-052](stories/US-052-sparks-balance-ui.md) | UI de balance display en home + paywall | EPIC-04 | Draft | 1 |
+| [US-053](stories/US-053-stripe-webhook-handler.md) | Stripe webhook handler (subscription events) | EPIC-04 | Draft | 5 |
+| [US-054](stories/US-054-revenuecat-webhook-handler.md) | RevenueCat webhook handler (in-app events) | EPIC-04 | Draft | 3 |
+| [US-055](stories/US-055-plan-activation-sparks-credit.md) | Plan activation + Sparks credit on payment success | EPIC-04 | Draft | 2 |
+| [US-056](stories/US-056-pack-purchase-flow.md) | Pack purchase flow (one-time Sparks pack) | EPIC-04 | Draft | 2 |
+| [US-057](stories/US-057-sparks-expiration-cron.md) | Sparks expiration cron (packs 6 meses) | EPIC-04 | Draft | 2 |
+| [US-058](stories/US-058-sparks-edge-cases.md) | Edge cases del Sparks system | EPIC-04 | Draft | 3 |
 
-**Total acumulado: 150 puntos en 49 stories.**
+**Total acumulado: 174 puntos en 58 stories.**
 - EPIC-01: 26 stories (80 pts) — completo a nivel spec.
-- EPIC-04: 6/15 stories (17 pts) — Slices 1-2 listos.
+- EPIC-04: 15 stories (41 pts) — completo a nivel spec.
 - EPIC-05: 17 stories (53 pts) — completo a nivel spec.
 
-(Más stories se agregan a medida que se generen.)
+(Más epics se agregan a medida que se planifiquen.)
 
 ---
 
