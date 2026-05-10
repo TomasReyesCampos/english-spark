@@ -95,6 +95,7 @@ Stories con cambios de schema agregan:
 | Epic | Título | Status | Stories estimadas |
 |------|--------|--------|------------------:|
 | [EPIC-01](epics/EPIC-01-auth-onboarding.md) | Auth + Onboarding (Sprint 0 foundational) | Draft (26 stories ready) | 26 |
+| [EPIC-04](epics/EPIC-04-sparks-system.md) | Sparks system (paralelo Sprint 1-2) | Draft (6/15 stories ready) | 15 |
 | [EPIC-05](epics/EPIC-05-ai-gateway-foundation.md) | AI Gateway foundation (paralelo Sprint 0-1) | Draft (17 stories ready) | 17 |
 
 (Más epics se agregan según se planifiquen los siguientes sprints.)
@@ -148,12 +149,19 @@ Stories con cambios de schema agregan:
 | [US-041](stories/US-041-logging-observability-dashboard.md) | Logging + observability dashboard | EPIC-05 | Draft | 3 |
 | [US-042](stories/US-042-prompt-versioning-audit.md) | Prompt versioning + audit trail | EPIC-05 | Draft | 3 |
 | [US-043](stories/US-043-admin-tasks-inspect-endpoint.md) | Admin endpoint para inspeccionar tasks | EPIC-05 | Draft | 2 |
+| [US-044](stories/US-044-sparks-balances-transactions-schema.md) | Schema `sparks_balances` + `sparks_transactions` | EPIC-04 | Draft | 3 |
+| [US-045](stories/US-045-sparks-balance-read-endpoint.md) | Sparks balance read endpoint + cache | EPIC-04 | Draft | 2 |
+| [US-046](stories/US-046-sparks-trial-award.md) | Sparks initial trial award (50 al signup) | EPIC-04 | Draft | 2 |
+| [US-047](stories/US-047-sparks-charge-endpoint.md) | Sparks charge endpoint (cobro previo idempotente) | EPIC-04 | Draft | 5 |
+| [US-048](stories/US-048-sparks-refund.md) | Sparks refund (en caso de fallo de operación) | EPIC-04 | Draft | 3 |
+| [US-049](stories/US-049-audit-log-validation-cron.md) | Audit log inmutable validation cron | EPIC-04 | Draft | 2 |
 
-**Total acumulado: 133 puntos en 43 stories.**
+**Total acumulado: 150 puntos en 49 stories.**
 - EPIC-01: 26 stories (80 pts) — completo a nivel spec.
+- EPIC-04: 6/15 stories (17 pts) — Slices 1-2 listos.
 - EPIC-05: 17 stories (53 pts) — completo a nivel spec.
 
-(Más epics se agregan a medida que se planifiquen.)
+(Más stories se agregan a medida que se generen.)
 
 ---
 
